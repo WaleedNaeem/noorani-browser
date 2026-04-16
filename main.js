@@ -5,9 +5,14 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    title: 'Noorani Browser',
+    backgroundColor: '#1a1a1a',
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Enables the <webview> tag used by the browser shell to render pages
+      // in a separate, sandboxed guest process.
+      webviewTag: true
     }
   });
 
