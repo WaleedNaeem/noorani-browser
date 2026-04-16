@@ -213,10 +213,13 @@
   </style>
 </head>
 <body>
-  <!-- Tab bar -->
+  <!-- Tab bar: #tabs is the flex+scroll container; the "+" button lives
+       inside it so it naturally sits right after the last tab and scrolls
+       along with the strip. -->
   <div class="tab-bar" role="tablist" aria-label="Browser tabs">
-    <div class="tabs" id="tabs"></div>
-    <button class="new-tab-btn" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">+</button>
+    <div class="tabs" id="tabs">
+      <button class="new-tab-btn" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">+</button>
+    </div>
   </div>
 
   <!-- Toolbar -->

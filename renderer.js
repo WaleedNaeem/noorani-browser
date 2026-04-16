@@ -101,7 +101,8 @@ function createTab(url = HOMEPAGE) {
     '<line x1="18" y1="6" x2="6" y2="18"/></svg>';
 
   tabEl.append(favEl, titleEl, closeEl);
-  tabsEl.appendChild(tabEl);
+  // Insert before the "+" button so the button always sits at the tail.
+  tabsEl.insertBefore(tabEl, newTabBtn);
 
   contentEl.appendChild(webview);
 
