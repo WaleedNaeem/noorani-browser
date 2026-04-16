@@ -3,17 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <!--
-    CSP applies to the UI chrome (this page) only.
-    The <webview> element is a guest process with its own origin and CSP,
-    so letting it load arbitrary sites is controlled by the webview itself,
-    not by this document's CSP. We still keep the chrome locked down.
+    CSP locks the chrome (this document) only. <webview> guests run in their
+    own processes with their own CSPs. img-src allows http/https so favicons
+    from visited sites render in tab strips.
   -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; child-src *; frame-src *;">
+        content="default-src 'self';
+                 script-src 'self';
+                 style-src 'self' 'unsafe-inline';
+                 img-src 'self' data: https: http:;
+                 child-src *; frame-src *;">
   <title>Noorani Browser</title>
   <style>
     :root {
       --bg: #1a1a1a;
+      --tab-bar-bg: #1a1a1a;
+      --tab-inactive: #252525;
+      --tab-hover: #2d2d2d;
+      --tab-active: #2a2a2a;
       --toolbar: #252525;
       --text: #e0e0e0;
       --muted: #8a8a8a;
@@ -26,23 +33,114 @@
     * { box-sizing: border-box; }
 
     html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-      background: var(--bg);
-      color: var(--text);
+      margin: 0; padding: 0;
+      height: 100%; width: 100%;
+      background: var(--bg); color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
                    Helvetica, Arial, sans-serif;
       overflow: hidden;
     }
+    body { display: flex; flex-direction: column; }
 
-    body {
+    /* ============ TAB BAR ============ */
+    .tab-bar {
+      flex: 0 0 36px;
+      height: 36px;
+      background: var(--tab-bar-bg);
       display: flex;
-      flex-direction: column;
+      align-items: stretch;
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+    }
+    .tabs {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: stretch;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+
+    .tab {
+      flex: 0 0 200px;
+      max-width: 200px;
+      min-width: 100px;
+      height: 36px;
+      background: var(--tab-inactive);
+      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 8px 0 10px;
+      gap: 8px;
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+    }
+    .tab:hover { background: var(--tab-hover); }
+    .tab.active {
+      background: var(--tab-active);
+    }
+    .tab.active::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
     }
 
-    /* Top toolbar (48px) */
+    .tab__favicon {
+      width: 16px; height: 16px;
+      flex: 0 0 16px;
+      object-fit: contain;
+      border-radius: 2px;
+    }
+    .tab__title {
+      flex: 1 1 auto;
+      font-size: 12px;
+      line-height: 36px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+    .tab__close {
+      flex: 0 0 18px;
+      width: 18px; height: 18px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: 3px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+    }
+    .tab__close:hover { background: #444; color: #fff; }
+    .tab:hover .tab__close,
+    .tab.active .tab__close { display: inline-flex; }
+
+    /* Loading indicator pulse on favicon */
+    .tab.loading .tab__favicon { opacity: 0.55; }
+
+    .new-tab-btn {
+      flex: 0 0 36px;
+      width: 36px; height: 36px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .new-tab-btn:hover { background: var(--tab-hover); color: var(--accent); }
+
+    /* ============ TOOLBAR ============ */
     .toolbar {
       flex: 0 0 48px;
       height: 48px;
@@ -56,8 +154,7 @@
     }
 
     .btn {
-      width: 36px;
-      height: 36px;
+      width: 36px; height: 36px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -73,7 +170,6 @@
     .btn:disabled { color: var(--muted); opacity: 0.4; cursor: default; }
     .btn svg { width: 18px; height: 18px; display: block; }
 
-    /* URL bar takes remaining space */
     .url-wrap {
       flex: 1 1 auto;
       display: flex;
@@ -98,16 +194,32 @@
       box-shadow: 0 0 0 1px var(--accent);
     }
 
-    /* Webview fills remaining space */
-    webview {
+    /* ============ CONTENT AREA (webview stack) ============ */
+    .content {
       flex: 1 1 auto;
-      width: 100%;
+      position: relative;
       background: #ffffff;
-      border: 0;
+      overflow: hidden;
     }
+    .content webview {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #ffffff;
+    }
+    .content webview.hidden { display: none !important; }
   </style>
 </head>
 <body>
+  <!-- Tab bar -->
+  <div class="tab-bar" role="tablist" aria-label="Browser tabs">
+    <div class="tabs" id="tabs"></div>
+    <button class="new-tab-btn" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">+</button>
+  </div>
+
+  <!-- Toolbar -->
   <div class="toolbar" role="toolbar" aria-label="Browser navigation">
     <button class="btn" id="back" title="Back (Alt+Left)" aria-label="Back" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -116,7 +228,6 @@
         <polyline points="12 19 5 12 12 5"></polyline>
       </svg>
     </button>
-
     <button class="btn" id="forward" title="Forward (Alt+Right)" aria-label="Forward" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round">
@@ -124,7 +235,6 @@
         <polyline points="12 5 19 12 12 19"></polyline>
       </svg>
     </button>
-
     <button class="btn" id="reload" title="Reload (Ctrl+R)" aria-label="Reload">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round">
@@ -132,16 +242,14 @@
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
       </svg>
     </button>
-
     <div class="url-wrap">
       <input id="url" type="text" spellcheck="false" autocomplete="off"
              placeholder="Search Google or enter a URL" />
     </div>
   </div>
 
-  <webview id="view"
-           src="https://www.google.com"
-           allowpopups></webview>
+  <!-- Content area: all webviews stacked, only active is visible -->
+  <div class="content" id="content"></div>
 
   <script src="renderer.js"></script>
 </body>
