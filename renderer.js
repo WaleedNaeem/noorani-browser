@@ -301,80 +301,79 @@ newTabBtn.addEventListener('click', () => {
   urlInput.select();
 });
 
-// ============ Global keyboard shortcuts ============
+// ============ Shortcut action helpers ============
 
-document.addEventListener('keydown', (e) => {
-  const mod = e.ctrlKey || e.metaKey; // allow Cmd on macOS too
+function focusURLBar() {
+  urlInput.focus();
+  urlInput.select();
+}
 
-  // Ctrl+L — focus + select URL bar
-  if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
-    e.preventDefault();
-    urlInput.focus();
-    urlInput.select();
-    return;
+// Ctrl+W policy: never let the window become empty. If the active tab is
+// the only tab, open a fresh HOMEPAGE tab first, then close the old one.
+function closeActiveTab() {
+  const tab = activeTab();
+  if (!tab) return;
+  if (tabs.length === 1) {
+    createTab(HOMEPAGE);
+    closeTab(tab.id);
+  } else {
+    closeTab(tab.id);
   }
+}
 
-  // F5 or Ctrl+R — reload active tab (and preventDefault so we don't reload
-  // the chrome itself, which would destroy every tab).
-  if (e.key === 'F5' || (mod && !e.altKey && e.key.toLowerCase() === 'r')) {
-    e.preventDefault();
-    const tab = activeTab();
-    if (tab) tab.webview.reload();
-    return;
-  }
+function cycleTab(delta) {
+  if (tabs.length < 2) return;
+  const idx = tabs.findIndex(t => t.id === currentTabId);
+  const next = ((idx + delta) % tabs.length + tabs.length) % tabs.length;
+  switchToTab(tabs[next].id);
+}
 
-  // Alt+Left — back
-  if (e.altKey && e.key === 'ArrowLeft') {
-    e.preventDefault();
-    const tab = activeTab();
-    if (tab && tab.webview.canGoBack()) tab.webview.goBack();
-    return;
-  }
+function switchToIndex(oneBased) {
+  const tab = tabs[oneBased - 1];
+  if (tab) switchToTab(tab.id);
+}
 
-  // Alt+Right — forward
-  if (e.altKey && e.key === 'ArrowRight') {
-    e.preventDefault();
-    const tab = activeTab();
-    if (tab && tab.webview.canGoForward()) tab.webview.goForward();
-    return;
-  }
+function backActive() {
+  const tab = activeTab();
+  if (tab && tab.webview.canGoBack()) tab.webview.goBack();
+}
 
-  // Ctrl+T — new tab
-  if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 't') {
-    e.preventDefault();
-    createTab();
-    urlInput.focus();
-    urlInput.select();
-    return;
-  }
+function forwardActive() {
+  const tab = activeTab();
+  if (tab && tab.webview.canGoForward()) tab.webview.goForward();
+}
 
-  // Ctrl+W — close active tab (closes window if it's the last)
-  if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
-    e.preventDefault();
-    if (currentTabId) closeTab(currentTabId);
-    return;
-  }
+function reloadActive() {
+  const tab = activeTab();
+  if (tab) tab.webview.reload();
+}
 
-  // Ctrl+Tab / Ctrl+Shift+Tab — cycle tabs (wraps)
-  if (mod && e.key === 'Tab') {
-    e.preventDefault();
-    if (tabs.length < 2) return;
-    const idx = tabs.findIndex(t => t.id === currentTabId);
-    const next = e.shiftKey
-      ? (idx - 1 + tabs.length) % tabs.length
-      : (idx + 1) % tabs.length;
-    switchToTab(tabs[next].id);
-    return;
-  }
+// ============ IPC shortcut subscription ============
+//
+// Keyboard shortcuts come from main.js menu accelerators via IPC. This works
+// even when a <webview> has focus (the renderer-level keydown handler used
+// in Phase 3 couldn't catch those). See preload.js for the bridge.
 
-  // Ctrl+1..9 — jump to tab N (if it exists)
-  if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-    e.preventDefault();
-    const n = parseInt(e.key, 10) - 1;
-    if (tabs[n]) switchToTab(tabs[n].id);
-    return;
-  }
-});
+if (window.nooraniAPI && typeof window.nooraniAPI.onShortcut === 'function') {
+  window.nooraniAPI.onShortcut((action, ...args) => {
+    switch (action) {
+      case 'new-tab':
+        createTab();
+        focusURLBar();
+        break;
+      case 'close-tab':
+        closeActiveTab();
+        break;
+      case 'next-tab':     cycleTab(+1); break;
+      case 'prev-tab':     cycleTab(-1); break;
+      case 'switch-tab':   switchToIndex(args[0]); break;
+      case 'back':         backActive(); break;
+      case 'forward':      forwardActive(); break;
+      case 'reload':       reloadActive(); break;
+      case 'focus-url':    focusURLBar(); break;
+    }
+  });
+}
 
 // ============ Startup ============
 
