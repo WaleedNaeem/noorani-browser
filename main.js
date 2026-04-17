@@ -11,13 +11,61 @@ let mainWindow = null;
 // Constants
 // ============================================================================
 
+const SETTINGS_VERSION = 2;
+
+// Per-category feature defaults. When new keys are added later, they flow in
+// via the migration path in loadSettings() without wiping existing values.
+const FEATURES_DEFAULTS = Object.freeze({
+  worship: Object.freeze({
+    prayerTimes:        false,
+    azanNotifications:  false,
+    qibla:              false,
+    hijriCalendar:      false,
+    quranQuickAccess:   false,
+    duaBookmarks:       false
+  }),
+  contentSafety: Object.freeze({
+    halalFilter:        false,
+    ramadanMode:        false,
+    familySafeMode:     false,
+    imageModesty:       false
+  }),
+  privacy: Object.freeze({
+    blockAdTracking:    true,
+    blockCryptoGambling: false,
+    blockRibaAds:       false,
+    localDataOnly:      true
+  }),
+  interface: Object.freeze({
+    language:           'en',
+    rtl:                false
+  })
+});
+
+const ONBOARDING_DEFAULTS = Object.freeze({
+  complete:    false,
+  completedAt: null
+});
+
+const LOCATION_DEFAULTS = Object.freeze({
+  city:    null,
+  country: null,
+  lat:     null,
+  lng:     null
+});
+
 const SETTINGS_DEFAULTS = Object.freeze({
   theme:              'light',                   // 'light' | 'dark' | 'auto'
   searchEngine:       'google',
   homepage:           'noorani://home',
   useCustomHomepage:  false,
-  version:            1
+  version:            SETTINGS_VERSION,
+  onboarding:         ONBOARDING_DEFAULTS,
+  location:           LOCATION_DEFAULTS,
+  features:           FEATURES_DEFAULTS
 });
+
+const SUPPORTED_LANGUAGES = Object.freeze(['en', 'ur', 'ar', 'id', 'tr', 'ms']);
 
 const SEARCH_ENGINES = Object.freeze({
   google:     { name: 'Google',     search: 'https://www.google.com/search?q=' },
@@ -61,15 +109,65 @@ function saveJSON(filename, data) {
   }
 }
 
+// Shallow-merge a single feature category so per-category updates don't wipe
+// keys the user hasn't explicitly set. Called during schema migration and
+// during onboarding:complete.
+function mergeCategory(defaults, existing) {
+  const out = { ...defaults };
+  if (existing && typeof existing === 'object') {
+    for (const [k, v] of Object.entries(existing)) {
+      if (v !== undefined) out[k] = v;
+    }
+  }
+  return out;
+}
+
+// Migrate a raw settings object to the current schema (v2). Preserves any
+// existing user values; fills in missing keys from defaults. Pure function —
+// doesn't touch disk.
+function migrateSettings(raw) {
+  if (!raw || typeof raw !== 'object') raw = {};
+  const rawFeatures = (raw.features && typeof raw.features === 'object') ? raw.features : {};
+
+  const merged = {
+    theme:             raw.theme             !== undefined ? raw.theme             : SETTINGS_DEFAULTS.theme,
+    searchEngine:      raw.searchEngine      !== undefined ? raw.searchEngine      : SETTINGS_DEFAULTS.searchEngine,
+    homepage:          raw.homepage          !== undefined ? raw.homepage          : SETTINGS_DEFAULTS.homepage,
+    useCustomHomepage: raw.useCustomHomepage !== undefined ? raw.useCustomHomepage : SETTINGS_DEFAULTS.useCustomHomepage,
+    onboarding:        mergeCategory(ONBOARDING_DEFAULTS, raw.onboarding),
+    location:          mergeCategory(LOCATION_DEFAULTS,   raw.location),
+    features: {
+      worship:       mergeCategory(FEATURES_DEFAULTS.worship,       rawFeatures.worship),
+      contentSafety: mergeCategory(FEATURES_DEFAULTS.contentSafety, rawFeatures.contentSafety),
+      privacy:       mergeCategory(FEATURES_DEFAULTS.privacy,       rawFeatures.privacy),
+      interface:     mergeCategory(FEATURES_DEFAULTS.interface,     rawFeatures.interface)
+    },
+    version: SETTINGS_VERSION
+  };
+
+  // Validation for the flat fields
+  if (!['light','dark','auto'].includes(merged.theme)) merged.theme = SETTINGS_DEFAULTS.theme;
+  if (!SEARCH_ENGINES[merged.searchEngine])            merged.searchEngine = SETTINGS_DEFAULTS.searchEngine;
+  if (typeof merged.useCustomHomepage !== 'boolean')   merged.useCustomHomepage = SETTINGS_DEFAULTS.useCustomHomepage;
+  if (typeof merged.homepage !== 'string')             merged.homepage = SETTINGS_DEFAULTS.homepage;
+
+  if (!SUPPORTED_LANGUAGES.includes(merged.features.interface.language)) {
+    merged.features.interface.language = FEATURES_DEFAULTS.interface.language;
+  }
+  if (typeof merged.features.interface.rtl !== 'boolean') {
+    merged.features.interface.rtl = FEATURES_DEFAULTS.interface.rtl;
+  }
+
+  return merged;
+}
+
 function loadSettings() {
   const raw = loadJSON('settings.json', null);
-  const base = (raw && typeof raw === 'object') ? raw : {};
-  const merged = { ...SETTINGS_DEFAULTS, ...base };
-  if (!['light','dark','auto'].includes(merged.theme)) merged.theme = SETTINGS_DEFAULTS.theme;
-  if (!SEARCH_ENGINES[merged.searchEngine])             merged.searchEngine = SETTINGS_DEFAULTS.searchEngine;
-  if (typeof merged.useCustomHomepage !== 'boolean')    merged.useCustomHomepage = SETTINGS_DEFAULTS.useCustomHomepage;
-  if (typeof merged.homepage !== 'string')              merged.homepage = SETTINGS_DEFAULTS.homepage;
-  return merged;
+  const migrated = migrateSettings(raw);
+  // Persist the migration once so the file on disk matches the current schema.
+  const needsMigration = !raw || !raw.version || raw.version < SETTINGS_VERSION;
+  if (needsMigration) saveJSON('settings.json', migrated);
+  return migrated;
 }
 
 function saveSettings(settings) {
@@ -183,7 +281,7 @@ function registerNooraniProtocol() {
       if (pathname !== '/' && pathname !== '') {
         return new Response('Not Found', { status: 404 });
       }
-      if (page === 'home' || page === 'settings') {
+      if (page === 'home' || page === 'settings' || page === 'welcome') {
         const html = buildInternalHtml(page);
         if (!html) return new Response('Template missing', { status: 500 });
         return new Response(html, {
@@ -376,6 +474,46 @@ function registerIpc() {
     if (options.settings)  broadcastSettings();
 
     return { cleared: selected };
+  });
+
+  // Onboarding --------------------------------------------------------------
+  // The welcome flow collects features + location in the renderer, then
+  // commits everything in one shot so settings.json transitions atomically
+  // from "onboarding incomplete" to "onboarding complete with these choices".
+  ipcMain.handle('onboarding:complete', (_e, payload) => {
+    const s = loadSettings();
+    const p = (payload && typeof payload === 'object') ? payload : {};
+
+    if (p.features && typeof p.features === 'object') {
+      for (const cat of Object.keys(FEATURES_DEFAULTS)) {
+        if (p.features[cat]) {
+          s.features[cat] = mergeCategory(s.features[cat], p.features[cat]);
+        }
+      }
+      // Re-validate interface fields in case the renderer sent bad values.
+      if (!SUPPORTED_LANGUAGES.includes(s.features.interface.language)) {
+        s.features.interface.language = FEATURES_DEFAULTS.interface.language;
+      }
+      if (typeof s.features.interface.rtl !== 'boolean') {
+        s.features.interface.rtl = FEATURES_DEFAULTS.interface.rtl;
+      }
+    }
+    if (p.location && typeof p.location === 'object') {
+      s.location = mergeCategory(s.location, p.location);
+    }
+    s.onboarding = { complete: true, completedAt: new Date().toISOString() };
+
+    saveSettings(s);
+    broadcastSettings();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
+
+  ipcMain.handle('onboarding:reset', () => {
+    const s = loadSettings();
+    s.onboarding = { complete: false, completedAt: null };
+    saveSettings(s);
+    broadcastSettings();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
   // Search engines / versions / misc ---------------------------------------

@@ -31,6 +31,7 @@ const historySearch  = document.getElementById('history-search');
 // ------- Constants / resources --------
 const INTERNAL_HOMEPAGE = 'noorani://home';
 const INTERNAL_SETTINGS = 'noorani://settings';
+const INTERNAL_WELCOME  = 'noorani://welcome';
 
 // webview preload — same preload.js, activated only on trusted schemes.
 const PRELOAD_URL = new URL('preload.js', window.location.href).href;
@@ -778,7 +779,11 @@ async function boot() {
     console.error('[noorani] settings bootstrap failed:', err);
   }
 
-  createTab();           // opens to getHomepage()
+  // First-run: open welcome instead of the homepage. Subsequent launches
+  // take the normal path via getHomepage().
+  const needsOnboarding = !!(currentSettings.onboarding &&
+                             !currentSettings.onboarding.complete);
+  createTab(needsOnboarding ? INTERNAL_WELCOME : undefined);
   focusURLBar();
 }
 

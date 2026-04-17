@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <!-- NOORANI_DATA -->
+  <script>
+    (function () {
+      const d = window.__NOORANI_DATA__;
+      if (d && d.effectiveTheme) {
+        document.documentElement.setAttribute('data-theme', d.effectiveTheme);
+      }
+    })();
+  </script>
+  <title>Welcome to Noorani Browser</title>
+  <style>
+    /* ------------------------------------------------------------------
+       welcome.html — first-run onboarding UI.
+       Runs inside a webview tab (noorani://welcome). The chrome (tab bar +
+       toolbar) is intentionally kept visible so the user can already tell
+       this is a browser; the welcome content fills the tab's body.
+       ------------------------------------------------------------------ */
+    :root[data-theme="light"] {
+      --page-bg:     #faf7f2;
+      --card-bg:     #ffffff;
+      --text:        #2a2a2a;
+      --muted:       #6b6b6b;
+      --accent:      #c9a961;
+      --accent-ink:  #8a6f2b;
+      --border:      #e8e2d5;
+      --hover:       #f5f0e5;
+      --input-bg:    #ffffff;
+      --switch-off:  #cfc4a8;
+      --dot-off:     #e0d8c4;
+    }
+    :root[data-theme="dark"] {
+      --page-bg:     #1a1a1a;
+      --card-bg:     #252525;
+      --text:        #e8e8e8;
+      --muted:       #9a9a9a;
+      --accent:      #d4af37;
+      --accent-ink:  #d4af37;
+      --border:      #3a3a3a;
+      --hover:       #2d2d2d;
+      --input-bg:    #1a1a1a;
+      --switch-off:  #3a3a3a;
+      --dot-off:     #3a3a3a;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      min-height: 100vh;
+      background: var(--page-bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .welcome {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 40px 28px 80px;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    /* Progress dots */
+    .progress {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      margin: 0 0 36px 0;
+      color: var(--muted);
+      font-size: 12px; letter-spacing: 0.5px;
+    }
+    .progress__label { margin-left: 6px; }
+    .progress__dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--dot-off);
+      transition: background-color 180ms ease, transform 180ms ease;
+    }
+    .progress__dot.is-current {
+      background: var(--accent);
+      transform: scale(1.3);
+    }
+    .progress__dot.is-done { background: var(--accent); }
+
+    /* Step container + transition */
+    .step {
+      opacity: 1;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+    .step[hidden] {
+      display: none !important;
+    }
+    .step.is-entering {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    /* ---------- Step 1: Intro ---------- */
+    .intro {
+      flex: 1 1 auto;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 40px 0 20px;
+      gap: 14px;
+    }
+    .intro__greeting {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 48px;
+      color: var(--accent-ink);
+      margin: 0;
+      line-height: 1.1;
+    }
+    .intro__title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 400;
+      font-size: 32px;
+      color: var(--text);
+      margin: 8px 0 0 0;
+      line-height: 1.2;
+    }
+    .intro__tagline {
+      font-size: 18px;
+      color: var(--muted);
+      margin: 6px 0 24px 0;
+      max-width: 420px;
+    }
+
+    .btn {
+      font: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease,
+                  filter 120ms ease;
+    }
+    .btn:hover { background: var(--hover); border-color: var(--accent); }
+
+    .btn--primary {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+      font-weight: 600;
+      padding: 14px 28px;
+      font-size: 15px;
+    }
+    .btn--primary:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      filter: brightness(0.96);
+    }
+
+    .intro__skip {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .intro__skip:hover { color: var(--text); }
+
+    /* ---------- Step 2/3 common: heading ---------- */
+    .step__heading {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 32px;
+      margin: 8px 0 8px 0;
+      color: var(--text);
+    }
+    .step__sub {
+      color: var(--muted);
+      font-size: 15px;
+      margin: 0 0 28px 0;
+    }
+
+    /* ---------- Step 2: Features ---------- */
+    .section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 18px;
+    }
+    .section__title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 18px;
+      color: var(--accent-ink);
+      margin: 0 0 4px 0;
+    }
+    .section__desc {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0 0 14px 0;
+    }
+
+    .feature {
+      display: flex; align-items: center;
+      gap: 16px;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .feature:first-of-type { border-top: none; padding-top: 4px; }
+    .feature__label {
+      flex: 1 1 auto;
+      font-size: 13px;
+    }
+    .feature__control { flex: 0 0 auto; }
+
+    /* Toggle switch — same style as settings.html */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px; height: 22px;
+      cursor: pointer;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch__slider {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--switch-off);
+      border-radius: 22px;
+      transition: background 150ms;
+    }
+    .switch__slider::before {
+      content: '';
+      position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: transform 150ms;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .switch input:checked + .switch__slider { background: var(--accent); }
+    .switch input:checked + .switch__slider::before { transform: translateX(18px); }
+
+    /* Language select inside feature row */
+    select, input[type="text"] {
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      min-width: 160px;
+      transition: border-color 120ms ease;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+    /* ---------- Step 3: Location ---------- */
+    .location-form {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 24px 20px;
+    }
+    .field {
+      display: flex; flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .field label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+    }
+    .field input[type="text"] { width: 100%; min-width: 0; }
+
+    .step__hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 12px 0 0 0;
+    }
+
+    /* ---------- Step actions ---------- */
+    .step__actions {
+      display: flex; justify-content: space-between;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .step__actions .spacer { flex: 1 1 auto; }
+  </style>
+</head>
+<body>
+  <div class="welcome">
+    <!-- Progress (hidden on Step 1, shown on 2 + 3) -->
+    <div class="progress" id="progress" hidden>
+      <span class="progress__dot" data-dot="1"></span>
+      <span class="progress__dot" data-dot="2"></span>
+      <span class="progress__dot" data-dot="3"></span>
+      <span class="progress__label" id="progress-label">Step 2 of 3</span>
+    </div>
+
+    <!-- STEP 1: Intro -->
+    <section class="step" id="step-1">
+      <div class="intro">
+        <h1 class="intro__greeting">As-salamu alaikum</h1>
+        <h2 class="intro__title">Welcome to Noorani Browser.</h2>
+        <p class="intro__tagline">A browser built for how you live online.</p>
+        <button class="btn btn--primary" id="start-btn">
+          Let's personalize your experience
+        </button>
+        <button class="intro__skip" id="skip-btn" type="button">
+          Skip for now
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 2: Features -->
+    <section class="step" id="step-2" hidden>
+      <h1 class="step__heading">What matters to you?</h1>
+      <p class="step__sub">
+        Pick the features you want. You can change these anytime in settings.
+      </p>
+
+      <div class="section">
+        <h3 class="section__title">Worship &amp; Practice</h3>
+        <p class="section__desc">Tools to support your daily practice of Islam.</p>
+        <div class="feature">
+          <div class="feature__label">Prayer times in the toolbar</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.prayerTimes"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Azan notifications (subtle, dismissible)</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.azanNotifications"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Qibla direction indicator</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.qibla"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Hijri calendar alongside Gregorian</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.hijriCalendar"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Quran quick-access button</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.quranQuickAccess"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Dua bookmarks</div>
+          <label class="switch"><input type="checkbox" data-feature="worship.duaBookmarks"><span class="switch__slider"></span></label>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3 class="section__title">Content &amp; Safety</h3>
+        <p class="section__desc">Filter what you and your family see online.</p>
+        <div class="feature">
+          <div class="feature__label">Halal content filter (blocks adult content, gambling, alcohol)</div>
+          <label class="switch"><input type="checkbox" data-feature="contentSafety.halalFilter"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Ramadan mode (auto-blocks distractions during fasting hours)</div>
+          <label class="switch"><input type="checkbox" data-feature="contentSafety.ramadanMode"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Family-safe mode (stricter filtering for shared devices)</div>
+          <label class="switch"><input type="checkbox" data-feature="contentSafety.familySafeMode"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Image modesty filter (blurs inappropriate images, click to reveal)</div>
+          <label class="switch"><input type="checkbox" data-feature="contentSafety.imageModesty"><span class="switch__slider"></span></label>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3 class="section__title">Privacy &amp; Values</h3>
+        <p class="section__desc">Protect your data and avoid content that conflicts with your values.</p>
+        <div class="feature">
+          <div class="feature__label">Block Western ad trackers</div>
+          <label class="switch"><input type="checkbox" data-feature="privacy.blockAdTracking"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Block cryptocurrency and gambling sites</div>
+          <label class="switch"><input type="checkbox" data-feature="privacy.blockCryptoGambling"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Block interest-based (riba) financial ads</div>
+          <label class="switch"><input type="checkbox" data-feature="privacy.blockRibaAds"><span class="switch__slider"></span></label>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Keep all data local</div>
+          <label class="switch"><input type="checkbox" data-feature="privacy.localDataOnly"><span class="switch__slider"></span></label>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3 class="section__title">Language &amp; Interface</h3>
+        <p class="section__desc">Customize how the browser looks and feels.</p>
+        <div class="feature">
+          <div class="feature__label">UI language</div>
+          <div class="feature__control">
+            <select id="language-select">
+              <option value="en">English</option>
+              <option value="ur">Urdu (اردو)</option>
+              <option value="ar">Arabic (العربية)</option>
+              <option value="id">Bahasa Indonesia</option>
+              <option value="tr">Turkish (Türkçe)</option>
+              <option value="ms">Malay (Bahasa Melayu)</option>
+            </select>
+          </div>
+        </div>
+        <div class="feature">
+          <div class="feature__label">Right-to-left layout (auto for Arabic / Urdu)</div>
+          <label class="switch"><input type="checkbox" data-feature="interface.rtl" id="rtl-toggle"><span class="switch__slider"></span></label>
+        </div>
+      </div>
+
+      <div class="step__actions">
+        <button class="btn" id="back-2">Back</button>
+        <span class="spacer"></span>
+        <button class="btn btn--primary" id="next-2">Continue</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Location -->
+    <section class="step" id="step-3" hidden>
+      <h1 class="step__heading">Where are you?</h1>
+      <p class="step__sub">
+        We need this for prayer times and Qibla direction. Your location
+        stays on your device.
+      </p>
+
+      <div class="location-form">
+        <div class="field">
+          <label for="city-input">City</label>
+          <input id="city-input" type="text" value="Rawalpindi" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="country-input">Country</label>
+          <input id="country-input" type="text" value="Pakistan" autocomplete="off" />
+        </div>
+      </div>
+
+      <p class="step__hint">You can change this anytime in settings.</p>
+
+      <div class="step__actions">
+        <button class="btn" id="back-3">Back</button>
+        <span class="spacer"></span>
+        <button class="btn btn--primary" id="finish-btn">Enter Noorani</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const api  = window.nooraniAPI;
+      const DATA = window.__NOORANI_DATA__ || {};
+      const settings = DATA.settings || {};
+
+      const INTERNAL_HOMEPAGE = 'noorani://home';
+
+      // Stay in sync with theme changes while on the welcome page.
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          const t = next._effectiveTheme || next.theme;
+          document.documentElement.setAttribute(
+            'data-theme', t === 'dark' ? 'dark' : 'light'
+          );
+        });
+      }
+
+      // ---------- Step navigation ----------
+      const steps = [
+        document.getElementById('step-1'),
+        document.getElementById('step-2'),
+        document.getElementById('step-3')
+      ];
+      const progress = document.getElementById('progress');
+      const progressLabel = document.getElementById('progress-label');
+      const dots = progress.querySelectorAll('.progress__dot');
+      let current = 0;
+
+      function showStep(idx) {
+        if (idx === current) return;
+        const prev = steps[current];
+        const next = steps[idx];
+
+        prev.hidden = true;
+        next.hidden = false;
+
+        // Slide-in animation: start slightly offset + transparent, then ease in.
+        next.classList.add('is-entering');
+        // Force reflow so the transition applies.
+        // eslint-disable-next-line no-unused-expressions
+        next.offsetHeight;
+        requestAnimationFrame(() => {
+          next.classList.remove('is-entering');
+        });
+
+        current = idx;
+        updateProgress();
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
+
+      function updateProgress() {
+        if (current === 0) {
+          progress.hidden = true;
+          return;
+        }
+        progress.hidden = false;
+        progressLabel.textContent = `Step ${current + 1} of 3`;
+        dots.forEach((d, i) => {
+          d.classList.toggle('is-current', i === current);
+          d.classList.toggle('is-done',   i <  current);
+        });
+      }
+
+      // ---------- Prefill from existing settings ----------
+      (function prefill() {
+        const f = settings.features || {};
+        document.querySelectorAll('[data-feature]').forEach((input) => {
+          const [cat, key] = input.dataset.feature.split('.');
+          const val = f[cat] && f[cat][key];
+          if (typeof val === 'boolean') input.checked = val;
+        });
+
+        const langSel = document.getElementById('language-select');
+        const lang = (f.interface && f.interface.language) || 'en';
+        langSel.value = lang;
+
+        const loc = settings.location || {};
+        if (loc.city)    document.getElementById('city-input').value    = loc.city;
+        if (loc.country) document.getElementById('country-input').value = loc.country;
+      })();
+
+      // Auto-flip RTL when Arabic / Urdu selected — user can still override.
+      const langSel    = document.getElementById('language-select');
+      const rtlToggle  = document.getElementById('rtl-toggle');
+      langSel.addEventListener('change', () => {
+        const auto = (langSel.value === 'ar' || langSel.value === 'ur');
+        rtlToggle.checked = auto;
+      });
+
+      // ---------- Collection ----------
+      function collect() {
+        const features = { worship: {}, contentSafety: {}, privacy: {}, interface: {} };
+        document.querySelectorAll('[data-feature]').forEach((input) => {
+          const [cat, key] = input.dataset.feature.split('.');
+          features[cat][key] = input.checked;
+        });
+        features.interface.language = langSel.value;
+
+        const location = {
+          city:    document.getElementById('city-input').value.trim()    || null,
+          country: document.getElementById('country-input').value.trim() || null
+        };
+        return { features, location };
+      }
+
+      async function finish(opts) {
+        opts = opts || {};
+        const payload = opts.skip ? {} : collect();
+        try {
+          if (api && api.onboarding) {
+            await api.onboarding.complete(payload);
+          }
+        } catch (err) {
+          console.error('[noorani] onboarding:complete failed:', err);
+        }
+        // Navigate the current tab to the user's homepage.
+        const target = (settings.useCustomHomepage && settings.homepage &&
+                        settings.homepage !== INTERNAL_HOMEPAGE)
+          ? settings.homepage
+          : INTERNAL_HOMEPAGE;
+        window.location.href = target;
+      }
+
+      // ---------- Wire buttons ----------
+      document.getElementById('start-btn').addEventListener('click',
+        () => showStep(1));
+      document.getElementById('skip-btn').addEventListener('click',
+        () => finish({ skip: true }));
+      document.getElementById('back-2').addEventListener('click',
+        () => showStep(0));
+      document.getElementById('next-2').addEventListener('click',
+        () => showStep(2));
+      document.getElementById('back-3').addEventListener('click',
+        () => showStep(1));
+      document.getElementById('finish-btn').addEventListener('click',
+        () => finish());
+    })();
+  </script>
+</body>
+</html>

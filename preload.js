@@ -69,6 +69,11 @@ if (isTrusted) {
       clear: (options) => invoke('browsing-data:clear', options)
     },
 
+    onboarding: {
+      complete: (payload) => invoke('onboarding:complete', payload),
+      reset:    ()        => invoke('onboarding:reset')
+    },
+
     search: {
       getEngines: () => invoke('search:engines')
     },

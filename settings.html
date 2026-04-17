@@ -333,6 +333,21 @@
       </div>
     </section>
 
+    <!-- ONBOARDING -->
+    <section class="section">
+      <h2>Onboarding</h2>
+      <div class="row">
+        <div class="row__label">Welcome setup</div>
+        <div class="row__control">
+          <button id="rerun-welcome-btn">Re-run welcome setup</button>
+          <div class="row__hint">
+            Reopens the first-run flow. Your current preferences will remain
+            unchanged unless you change them there.
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ABOUT -->
     <section class="section">
       <h2>About</h2>
@@ -480,6 +495,21 @@
           // Settings reset — reload to refresh UI state (theme, form values).
           setTimeout(() => location.reload(), 300);
         }
+      });
+
+      // ===== Onboarding =====
+      document.getElementById('rerun-welcome-btn').addEventListener('click', async () => {
+        const confirmed = await window.nooraniModal.confirm({
+          title:       'Re-run Welcome Setup',
+          message:     'This will reopen the welcome flow. Your current ' +
+                       'preferences will remain unchanged unless you change ' +
+                       'them. Continue?',
+          confirmText: 'Re-run Welcome',
+          cancelText:  'Cancel'
+        });
+        if (!confirmed || !api) return;
+        await api.onboarding.reset();
+        window.location.href = 'noorani://welcome';
       });
 
       // ===== About =====
