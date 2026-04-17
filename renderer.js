@@ -19,6 +19,7 @@ const downloadsBtn   = document.getElementById('downloads-btn');
 const settingsBtn    = document.getElementById('settings-btn');
 const dlBadge        = document.getElementById('dl-badge');
 
+const loadingBarEl   = document.getElementById('loading-bar');
 const panelEl        = document.getElementById('panel');
 const panelTitle     = document.getElementById('panel-title');
 const panelClose     = document.getElementById('panel-close');
@@ -76,6 +77,34 @@ let downloadsState = [];
 
 function activeTab() {
   return tabs.find(t => t.id === currentTabId) || null;
+}
+
+// Loading bar — reflects the currently active tab's loading state.
+let _loadingDoneTimer = null;
+function syncLoadingBar() {
+  const tab = activeTab();
+  const isLoading = !!(tab && tab.isLoading);
+  if (!loadingBarEl) return;
+
+  if (_loadingDoneTimer) { clearTimeout(_loadingDoneTimer); _loadingDoneTimer = null; }
+
+  if (isLoading) {
+    loadingBarEl.classList.remove('is-done');
+    // Reset to 0, then in the next frame let the transition run to 88%.
+    loadingBarEl.classList.remove('is-loading');
+    loadingBarEl.style.width = '0';
+    // eslint-disable-next-line no-unused-expressions
+    loadingBarEl.offsetWidth;
+    requestAnimationFrame(() => loadingBarEl.classList.add('is-loading'));
+  } else {
+    loadingBarEl.classList.remove('is-loading');
+    loadingBarEl.classList.add('is-done');
+    _loadingDoneTimer = setTimeout(() => {
+      loadingBarEl.classList.remove('is-done');
+      loadingBarEl.style.width = '';
+      _loadingDoneTimer = null;
+    }, 500);
+  }
 }
 
 // ============ Theme + homepage + engine helpers ============
@@ -153,6 +182,24 @@ function el(tag, attrs, ...children) {
 function hostLabel(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); }
   catch { return url; }
+}
+
+// Build a panel empty-state with a soft icon above the text.
+const EMPTY_ICONS = {
+  bookmarks: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  history:   '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/><polyline points="12 7 12 12 15 14"/>',
+  downloads: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+};
+function emptyState(kind, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'panel__empty';
+  wrap.innerHTML =
+    '<svg class="panel__empty__icon" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' + (EMPTY_ICONS[kind] || '') + '</svg>' +
+    '<div></div>';
+  wrap.lastChild.textContent = text;
+  return wrap;
 }
 
 // ============ Tab creation ============
@@ -273,12 +320,16 @@ function wireTab(tab) {
   wv.addEventListener('did-start-loading', () => {
     tab.isLoading = true;
     tab.tabEl.classList.add('loading');
+    if (tab.id === currentTabId) syncLoadingBar();
   });
 
   wv.addEventListener('did-stop-loading', () => {
     tab.isLoading = false;
     tab.tabEl.classList.remove('loading');
-    if (tab.id === currentTabId) updateNavButtons();
+    if (tab.id === currentTabId) {
+      updateNavButtons();
+      syncLoadingBar();
+    }
     maybeLogHistory(tab);
   });
 
@@ -319,6 +370,7 @@ function switchToTab(id) {
   syncWindowTitle();
   updateNavButtons();
   syncStar();
+  syncLoadingBar();
   tab.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -327,9 +379,14 @@ function closeTab(id) {
   if (idx === -1) return;
 
   const tab = tabs[idx];
-  tab.webview.remove();
-  tab.tabEl.remove();
+  // Drop logical state + the webview immediately so switchToTab stays sane.
   tabs.splice(idx, 1);
+  tab.webview.remove();
+
+  // Animate the tab chrome element out, then remove from DOM.
+  const node = tab.tabEl;
+  node.classList.add('is-leaving');
+  setTimeout(() => { if (node.parentNode) node.remove(); }, 180);
 
   if (tabs.length === 0) {
     window.close();
@@ -525,9 +582,10 @@ async function renderBookmarksPanel() {
   const bookmarks = await window.nooraniAPI.bookmarks.get();
   bookmarksList.textContent = '';
   if (!bookmarks.length) {
-    bookmarksList.appendChild(
-      el('div', { className: 'panel__empty' },
-        'No bookmarks yet. Click the star to save one.'));
+    bookmarksList.appendChild(emptyState(
+      'bookmarks',
+      'No bookmarks yet. Click the star on any page to save it.'
+    ));
     return;
   }
   for (const b of bookmarks) {
@@ -563,9 +621,11 @@ async function renderHistoryPanel() {
 
   historyList.textContent = '';
   if (!filtered.length) {
-    historyList.appendChild(
-      el('div', { className: 'panel__empty' },
-        q ? 'No history matches your search.' : 'No browsing history yet.'));
+    historyList.appendChild(emptyState(
+      'history',
+      q ? 'No history matches your search.'
+        : 'Your browsing history will appear here.'
+    ));
     return;
   }
 
@@ -611,9 +671,10 @@ historySearch.addEventListener('input', () => {
 function renderDownloadsPanel() {
   downloadsListEl.textContent = '';
   if (!downloadsState.length) {
-    downloadsListEl.appendChild(
-      el('div', { className: 'panel__empty' },
-        'No downloads this session.'));
+    downloadsListEl.appendChild(emptyState(
+      'downloads',
+      'No downloads yet.'
+    ));
     return;
   }
   for (const d of downloadsState) {

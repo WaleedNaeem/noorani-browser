@@ -56,8 +56,8 @@
       justify-content: center;
       opacity: 0;
       transition: opacity 150ms ease-out;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                   Helvetica, Arial, sans-serif;
+      font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
     }
     .noorani-modal__backdrop.is-open { opacity: 1; }
 
@@ -79,9 +79,9 @@
     }
 
     .noorani-modal__title {
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: var(--font-serif, 'DM Serif Display', Georgia, serif);
       font-size: 20px;
-      font-weight: 500;
+      font-weight: 400;
       margin: 0 0 10px 0;
       color: var(--nm-text);
     }

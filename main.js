@@ -255,7 +255,8 @@ function buildInternalHtml(pageName) {
 // a fixed content-type from the app directory. Whitelisted explicitly so a
 // malformed URL can never pull arbitrary files off disk.
 const NOORANI_ASSETS = Object.freeze({
-  '/modal.js': 'text/javascript; charset=utf-8'
+  '/modal.js':              'text/javascript; charset=utf-8',
+  '/css/typography.css':    'text/css; charset=utf-8'
 });
 
 function registerNooraniProtocol() {
@@ -660,6 +661,7 @@ function createWindow() {
     title:           'Noorani Browser',
     backgroundColor: '#faf7f2',
     autoHideMenuBar: true,
+    icon:            path.join(__dirname, 'assets', 'icons', 'icon-256.png'),
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -695,6 +697,11 @@ function createWindow() {
   mainWindow.on('close',             flushWindowStateSave);
 
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// Windows taskbar grouping — must be set before the first window opens.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.noorani.browser');
 }
 
 app.whenReady().then(() => {

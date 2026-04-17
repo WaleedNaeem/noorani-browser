@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <!-- NOORANI_DATA -->
   <script>
-    // Apply theme from injected data before first paint.
     (function () {
       const d = window.__NOORANI_DATA__;
       if (d && d.effectiveTheme) {
@@ -12,147 +11,262 @@
       }
     })();
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/css/typography.css">
   <title>New Tab</title>
   <style>
     :root[data-theme="light"] {
-      --page-bg:    #faf7f2;
-      --text:       #2a2a2a;
-      --muted:      #6b6b6b;
-      --accent:     #c9a961;
-      --accent-ink: #8a6f2b;
-      --card-bg:    #ffffff;
-      --card-br:    #e8e2d5;
-      --hover:      #efe6cf;
+      --bg-primary:     #faf7f2;
+      --bg-card:        #ffffff;
+      --bg-card-hover:  #f5f0e5;
+      --text-primary:   #2a2a2a;
+      --text-secondary: #6b6b6b;
+      --text-tertiary:  #9a9a9a;
+      --accent:         #c9a961;
+      --accent-ink:     #8a6f2b;
+      --border:         #e8e2d5;
+      --border-strong:  #d6ccb2;
+      --shadow:         0 1px 3px rgba(0,0,0,0.04);
+      --shadow-hover:   0 8px 24px rgba(138, 111, 43, 0.12);
+      --focus-ring:     0 0 0 3px rgba(201, 169, 97, 0.25);
     }
     :root[data-theme="dark"] {
-      --page-bg:    #1a1a1a;
-      --text:       #e8e8e8;
-      --muted:      #9a9a9a;
-      --accent:     #d4af37;
-      --accent-ink: #d4af37;
-      --card-bg:    #252525;
-      --card-br:    #3a3a3a;
-      --hover:      #2d2d2d;
+      --bg-primary:     #1a1a1a;
+      --bg-card:        #252525;
+      --bg-card-hover:  #2d2d2d;
+      --text-primary:   #e8e8e8;
+      --text-secondary: #9a9a9a;
+      --text-tertiary:  #6b6b6b;
+      --accent:         #d4af37;
+      --accent-ink:     #d4af37;
+      --border:         #3a3a3a;
+      --border-strong:  #4a4a4a;
+      --shadow:         0 1px 3px rgba(0,0,0,0.3);
+      --shadow-hover:   0 8px 24px rgba(0,0,0,0.4);
+      --focus-ring:     0 0 0 3px rgba(212, 175, 55, 0.25);
     }
 
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
       min-height: 100vh;
-      background: var(--page-bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                   Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    body {
+      display: flex; flex-direction: column;
     }
 
-    .page {
-      min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center;
-      padding: 12vh 24px 48px;
+    /* -------- Top bar -------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex; align-items: center;
+      padding: 20px 28px;
     }
-
     .wordmark {
-      font-size: 30px; letter-spacing: 0.5px;
-      margin-bottom: 44px; color: var(--text);
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-size: var(--text-lg);
+      color: var(--accent-ink);
+      letter-spacing: 0.01em;
+      user-select: none;
     }
-    .wordmark .noorani {
-      font-family: Georgia, "Times New Roman", serif;
-      font-style: italic; color: var(--accent-ink);
+    .topbar__spacer { flex: 1 1 auto; }
+    .pill--placeholder {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      padding: 5px 10px;
+      border: 1px dashed var(--border);
+      border-radius: 999px;
     }
 
-    .search { width: 560px; max-width: min(90vw, 720px); }
-    .search input {
-      width: 100%; height: 52px;
-      padding: 0 22px; font-size: 16px;
-      color: var(--text);
-      background: var(--card-bg);
-      border: 1px solid var(--card-br); border-radius: 30px;
+    /* -------- Hero -------- */
+    .hero {
+      flex: 1 1 auto;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 32px 28px 32px;
+      gap: 32px;
+    }
+    .greeting {
+      font-family: var(--font-serif);
+      font-size: var(--text-3xl);
+      font-weight: 400;
+      line-height: var(--leading-tight);
+      margin: 0;
+      color: var(--text-primary);
+      max-width: 720px;
+    }
+    .greeting em {
+      font-style: italic;
+      color: var(--accent-ink);
+    }
+
+    /* -------- Search bar -------- */
+    .search {
+      width: 100%;
+      max-width: 640px;
+      position: relative;
+    }
+    .search__icon {
+      position: absolute;
+      left: 18px; top: 50%;
+      transform: translateY(-50%);
+      width: 18px; height: 18px;
+      color: var(--text-tertiary);
+      pointer-events: none;
+    }
+    .search__input {
+      width: 100%;
+      height: 52px;
+      padding: 0 20px 0 50px;
+      font-family: var(--font-sans);
+      font-size: var(--text-base);
+      color: var(--text-primary);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
       outline: none;
-      transition: border-color 150ms ease, box-shadow 150ms ease;
+      box-shadow: var(--shadow);
+      transition: border-color 140ms ease, box-shadow 140ms ease;
     }
-    .search input::placeholder { color: var(--muted); }
-    .search input:focus {
+    .search__input::placeholder { color: var(--text-tertiary); }
+    .search__input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.22);
+      box-shadow: var(--focus-ring);
     }
 
+    /* -------- Shortcuts -------- */
     .shortcuts {
-      margin-top: 48px;
+      width: 100%;
+      max-width: 720px;
+      margin-top: 16px;
+    }
+    .shortcuts__label {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--text-tertiary);
+      margin: 0 0 14px 6px;
+    }
+    .shortcuts__grid {
       display: grid;
-      grid-template-columns: repeat(3, 104px);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
     }
-    @media (min-width: 720px) {
-      .shortcuts { grid-template-columns: repeat(6, 104px); }
+    @media (max-width: 720px) {
+      .shortcuts__grid { grid-template-columns: repeat(2, 1fr); }
     }
-
+    @media (max-width: 520px) {
+      .shortcuts__grid { grid-template-columns: repeat(2, 1fr); }
+      .greeting { font-size: var(--text-2xl); }
+    }
     .shortcut {
-      display: flex; flex-direction: column; align-items: center;
-      padding: 16px 8px;
-      text-decoration: none; color: inherit;
-      border-radius: 12px;
-      transition: background-color 120ms ease, transform 120ms ease;
+      display: flex; align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: transform 140ms ease, box-shadow 140ms ease,
+                  background-color 140ms ease, border-color 140ms ease;
+      min-width: 0;
     }
     .shortcut:hover {
-      background: var(--hover);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      background: var(--bg-card-hover);
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-hover);
     }
-    .shortcut img {
-      width: 32px; height: 32px; object-fit: contain;
-      margin-bottom: 10px; border-radius: 6px;
-      background: var(--card-bg); padding: 4px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    .shortcut__fav {
+      flex: 0 0 24px;
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      object-fit: contain;
+      background: var(--bg-primary);
     }
-    .shortcut span {
-      font-size: 12px; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis;
-      max-width: 96px; color: var(--text);
+    .shortcut__name {
+      flex: 1 1 auto;
+      font-size: var(--text-sm);
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .empty {
-      margin-top: 48px; color: var(--muted);
-      font-size: 13px; max-width: 440px;
-      text-align: center; line-height: 1.5;
+    /* -------- Footer -------- */
+    .footer {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px;
+      padding: 20px 28px 28px;
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
     }
+    .footer a {
+      color: var(--text-tertiary);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--text-tertiary);
+      transition: color 140ms ease, border-color 140ms ease;
+    }
+    .footer a:hover {
+      color: var(--accent-ink);
+      border-bottom-color: var(--accent-ink);
+    }
+    .footer__sep { opacity: 0.5; }
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="wordmark">
-      <span class="noorani">Noorani</span>&nbsp;<span class="browser">Browser</span>
-    </div>
+  <header class="topbar">
+    <div class="wordmark">Noorani</div>
+    <div class="topbar__spacer"></div>
+    <!-- Placeholder for Phase 9 prayer-time pill. -->
+    <span class="pill--placeholder">Prayer times coming soon</span>
+  </header>
 
-    <form class="search" autocomplete="off" id="search-form">
-      <input name="q" type="text" placeholder="Search with Noorani" autofocus />
+  <main class="hero">
+    <h1 class="greeting" id="greeting">&nbsp;</h1>
+
+    <form class="search" id="search-form" autocomplete="off">
+      <svg class="search__icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search-input" class="search__input" type="text" spellcheck="false"
+             placeholder="Search or enter a URL" autofocus>
     </form>
 
-    <div id="shortcuts" class="shortcuts" hidden></div>
-    <div id="empty" class="empty" hidden>
-      Your shortcuts will appear here as you browse.
-    </div>
-  </div>
+    <section class="shortcuts">
+      <div class="shortcuts__label">Shortcuts</div>
+      <div class="shortcuts__grid" id="shortcuts-grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span id="version-tag">Noorani Browser</span>
+    <span class="footer__sep">·</span>
+    <a href="noorani://settings">Settings</a>
+  </footer>
 
   <script>
     (function () {
-      const data = window.__NOORANI_DATA__ || {};
+      const DATA = window.__NOORANI_DATA__ || {};
+      const api  = window.nooraniAPI;
+      const settings = DATA.settings || {};
+      const engines  = DATA.engines  || {};
 
-      // --- Search form wiring ----------------------------------------------
-      const engines  = data.engines || {};
-      const engineKey = (data.settings && data.settings.searchEngine) || 'google';
-      const engine   = engines[engineKey] || engines.google ||
-                       { search: 'https://www.google.com/search?q=' };
-
-      const form  = document.getElementById('search-form');
-      const input = form.querySelector('input[name="q"]');
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const q = input.value.trim();
-        if (!q) return;
-        window.location.href = engine.search + encodeURIComponent(q);
-      });
-
-      // --- Live theme updates ---------------------------------------------
-      if (window.nooraniAPI && window.nooraniAPI.settings) {
-        window.nooraniAPI.settings.onChange((next) => {
+      // Stay in sync with theme changes while on the home page.
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
           const t = next._effectiveTheme || next.theme;
           document.documentElement.setAttribute(
             'data-theme', t === 'dark' ? 'dark' : 'light'
@@ -160,46 +274,102 @@
         });
       }
 
-      // --- Shortcuts ------------------------------------------------------
-      const top       = data.topSites || [];
-      const container = document.getElementById('shortcuts');
-      const empty     = document.getElementById('empty');
-
-      if (!top.length) {
-        empty.hidden = false;
-        return;
+      // ---------- Time-aware greeting ----------
+      // PLACEHOLDER thresholds for Phase 7. Phase 9 will replace these with
+      // real prayer-time boundaries (Fajr / Dhuhr / Asr / Maghrib / Isha).
+      function greetingText() {
+        const h = new Date().getHours();
+        const m = new Date().getMinutes();
+        const hm = h + m / 60;
+        const alaikum = '<em>alaikum</em>';
+        if (hm < 5)      return 'Still night. Rest well.';
+        if (hm < 12)     return `As-salamu ${alaikum}. Good morning.`;
+        if (hm < 15.5)   return `As-salamu ${alaikum}. Good afternoon.`;
+        if (hm < 18)     return `As-salamu ${alaikum}. Good afternoon.`;
+        if (hm < 20)     return `As-salamu ${alaikum}. Good evening.`;
+        return `As-salamu ${alaikum}.`;
       }
-      container.hidden = false;
+      document.getElementById('greeting').innerHTML = greetingText();
 
-      function hostLabel(url) {
-        try { return new URL(url).hostname.replace(/^www\./, ''); }
-        catch (_) { return url; }
+      // ---------- Search bar ----------
+      function currentEngine() {
+        const key = settings.searchEngine || 'google';
+        return engines[key] || engines.google ||
+               { search: 'https://www.google.com/search?q=' };
+      }
+      function parseInput(raw) {
+        const input = raw.trim();
+        if (!input) return null;
+        if (/^(https?|file|about|data|noorani):/i.test(input)) return input;
+        if (/^localhost(:\d+)?(\/|$)/i.test(input)) return 'http://' + input;
+        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)?/.test(input)) return 'http://' + input;
+        const hostPart = input.split(/[\/?#]/)[0];
+        if (!/\s/.test(input) && hostPart.includes('.') && !hostPart.endsWith('.')) {
+          return 'https://' + input;
+        }
+        return currentEngine().search + encodeURIComponent(input);
+      }
+      document.getElementById('search-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const target = parseInput(document.getElementById('search-input').value);
+        if (target) window.location.href = target;
+      });
+
+      // ---------- Shortcuts ----------
+      const DEFAULT_SHORTCUTS = [
+        { url: 'https://quran.com',         title: 'Quran.com' },
+        { url: 'https://www.aljazeera.com', title: 'Al Jazeera' },
+        { url: 'https://www.bbc.com',       title: 'BBC' },
+        { url: 'https://github.com',        title: 'GitHub' },
+        { url: 'https://mail.google.com',   title: 'Gmail' },
+        { url: 'https://www.youtube.com',   title: 'YouTube' }
+      ];
+      const FALLBACK_FAVICON =
+        'data:image/svg+xml;utf8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="#9a9a9a" stroke-width="2" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="10"/>' +
+          '<line x1="2" y1="12" x2="22" y2="12"/>' +
+          '<path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/>' +
+          '</svg>'
+        );
+      function hostOf(url) {
+        try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+      }
+      function googleFavicon(url) {
+        const h = hostOf(url);
+        return h
+          ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(h)}&sz=64`
+          : FALLBACK_FAVICON;
       }
 
-      const fallback = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
-        'fill="none" stroke="#8a7f62" stroke-width="2" ' +
-        'stroke-linecap="round" stroke-linejoin="round">' +
-        '<circle cx="12" cy="12" r="10"/>' +
-        '<line x1="2" y1="12" x2="22" y2="12"/>' +
-        '<path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/>' +
-        '</svg>'
-      );
+      const grid = document.getElementById('shortcuts-grid');
+      const topSites = Array.isArray(DATA.topSites) ? DATA.topSites : [];
+      const list = topSites.length >= 6 ? topSites.slice(0, 6) : DEFAULT_SHORTCUTS;
 
-      for (const site of top) {
+      for (const s of list) {
         const a = document.createElement('a');
-        a.href = site.url;
         a.className = 'shortcut';
+        a.href = s.url;
         const img = document.createElement('img');
-        img.src = site.favicon || fallback;
+        img.className = 'shortcut__fav';
+        img.src = s.favicon || googleFavicon(s.url);
         img.alt = '';
-        img.onerror = function () {
-          this.onerror = null; this.src = fallback;
-        };
-        const label = document.createElement('span');
-        label.textContent = site.title || hostLabel(site.url);
-        a.append(img, label);
-        container.appendChild(a);
+        img.onerror = () => { img.onerror = null; img.src = FALLBACK_FAVICON; };
+        const name = document.createElement('span');
+        name.className = 'shortcut__name';
+        name.textContent = s.title || hostOf(s.url) || s.url;
+        a.append(img, name);
+        grid.appendChild(a);
+      }
+
+      // ---------- Footer version ----------
+      if (api && api.app && api.app.getVersions) {
+        api.app.getVersions().then((v) => {
+          const tag = document.getElementById('version-tag');
+          if (v && v.app) tag.textContent = `Noorani Browser v${v.app}`;
+        }).catch(() => {});
       }
     })();
   </script>

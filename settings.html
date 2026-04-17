@@ -11,6 +11,9 @@
       }
     })();
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/css/typography.css">
   <title>Settings</title>
   <style>
     :root[data-theme="light"] {
@@ -48,91 +51,122 @@
       margin: 0; padding: 0;
       min-height: 100vh;
       background: var(--page-bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                   Helvetica, Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
+      font-size: var(--text-sm);
+      line-height: var(--leading-body);
     }
 
     .page {
       max-width: 720px;
       margin: 0 auto;
-      padding: 48px 24px 72px;
+      padding: 56px 28px 80px;
     }
 
     .page-title {
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: var(--font-serif);
       font-style: italic;
-      font-size: 34px;
+      font-size: var(--text-3xl);
       font-weight: 400;
-      margin: 0 0 32px 0;
+      margin: 0 0 36px 0;
       color: var(--text);
+      line-height: var(--leading-tight);
     }
 
     .section {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 20px 24px;
-      margin-bottom: 20px;
+      padding: 22px 26px;
+      margin-bottom: 22px;
     }
 
     .section h2 {
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: var(--font-serif);
       font-style: italic;
       font-weight: 400;
-      font-size: 20px;
-      margin: 0 0 14px 0;
+      font-size: var(--text-xl);
+      margin: 0 0 16px 0;
       color: var(--accent-ink);
+      line-height: var(--leading-tight);
     }
 
     .row {
       display: flex;
       align-items: center;
       gap: 16px;
-      padding: 12px 0;
+      padding: 14px 0;
       border-top: 1px solid var(--border);
     }
     .row:first-of-type { border-top: none; padding-top: 0; }
 
     .row__label {
       flex: 0 0 180px;
-      font-weight: 500;
-      font-size: 13px;
-      color: var(--text);
+      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
     .row__control { flex: 1 1 auto; min-width: 0; }
     .row__hint {
       color: var(--muted);
-      font-size: 11px;
+      font-size: var(--text-xs);
       margin-top: 6px;
       font-family: "SFMono-Regular", Consolas, monospace;
       word-break: break-all;
     }
 
-    /* Theme radios */
+    /* Theme preview cards */
+    .theme-options {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
     .theme-option {
-      display: inline-flex;
+      display: flex;
+      flex-direction: column;
       align-items: center;
       gap: 8px;
-      margin-right: 18px;
+      padding: 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: var(--text-sm);
+      background: var(--page-bg);
+      transition: border-color 140ms ease, background 140ms ease;
+      min-width: 96px;
     }
-    .theme-option input[type="radio"] {
-      margin: 0; accent-color: var(--accent);
+    .theme-option:hover { border-color: var(--accent); }
+    .theme-option:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--hover);
     }
+    .theme-option input[type="radio"] { display: none; }
     .theme-swatch {
-      width: 34px; height: 20px;
-      border-radius: 4px;
+      width: 72px; height: 48px;
+      border-radius: 6px;
       border: 1px solid var(--border);
-      display: inline-block;
-      flex: 0 0 34px;
+      display: block;
+      position: relative;
+      overflow: hidden;
     }
-    .theme-swatch--light { background: linear-gradient(to bottom, #ffffff 50%, #faf7f2 50%); }
-    .theme-swatch--dark  { background: linear-gradient(to bottom, #252525 50%, #1a1a1a 50%); }
+    .theme-swatch::before {
+      content: '';
+      position: absolute;
+      top: 6px; left: 6px; right: 6px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--accent);
+      opacity: 0.7;
+    }
+    .theme-swatch--light { background: linear-gradient(to bottom, #ffffff 45%, #faf7f2 45%); }
+    .theme-swatch--dark  { background: linear-gradient(to bottom, #252525 45%, #1a1a1a 45%); }
     .theme-swatch--auto  {
       background: linear-gradient(to right, #faf7f2 0, #faf7f2 50%, #1a1a1a 50%, #1a1a1a 100%);
+    }
+    .theme-option__label {
+      font-size: var(--text-xs);
+      font-weight: 500;
+      color: var(--text);
     }
 
     /* Controls */
@@ -140,15 +174,18 @@
       background: var(--input-bg);
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 13px;
-      font-family: inherit;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: var(--text-sm);
+      font-family: var(--font-sans);
       outline: none;
-      min-width: 200px;
-      transition: border-color 120ms ease;
+      min-width: 220px;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
     }
-    select:focus, input[type="text"]:focus { border-color: var(--accent); }
+    select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.18);
+    }
 
     .input-group { display: flex; gap: 8px; }
     .input-group input { flex: 1 1 auto; min-width: 0; }
@@ -156,12 +193,13 @@
     button {
       background: transparent;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 8px 14px;
-      font-size: 13px;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: var(--text-sm);
+      font-weight: 500;
       color: var(--text);
       cursor: pointer;
-      font-family: inherit;
+      font-family: var(--font-sans);
       transition: background-color 120ms ease, border-color 120ms ease;
     }
     button:hover { border-color: var(--accent); background: var(--hover); }
@@ -204,43 +242,45 @@
 
     /* Checkboxes */
     .checkboxes {
-      display: flex; flex-direction: column; gap: 8px;
+      display: flex; flex-direction: column; gap: 10px;
     }
     .checkboxes label {
-      display: flex; align-items: center; gap: 10px;
-      cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; font-size: var(--text-sm);
     }
     .checkboxes input[type="checkbox"] { accent-color: var(--accent); }
 
     .clear-status {
-      margin-left: 12px; font-size: 12px;
+      margin-left: 12px;
+      font-size: var(--text-xs);
       color: var(--muted);
       transition: opacity 300ms ease;
     }
 
     /* About */
     .about__name {
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: var(--font-serif);
       font-style: italic;
-      font-size: 26px;
+      font-size: var(--text-xl);
       color: var(--accent-ink);
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      line-height: var(--leading-tight);
     }
     .about__tagline {
       color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 18px;
+      font-size: var(--text-sm);
+      margin-bottom: 20px;
     }
     .about__meta {
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.7;
+      font-size: var(--text-sm);
+      line-height: 1.75;
     }
     .about__meta a { color: var(--accent-ink); text-decoration: none; }
     .about__meta a:hover { text-decoration: underline; }
     .about__meta code {
       font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text);
     }
   </style>
@@ -255,21 +295,23 @@
       <div class="row">
         <div class="row__label">Theme</div>
         <div class="row__control">
-          <label class="theme-option">
-            <input type="radio" name="theme" value="light">
-            <span class="theme-swatch theme-swatch--light"></span>
-            <span>Light</span>
-          </label>
-          <label class="theme-option">
-            <input type="radio" name="theme" value="dark">
-            <span class="theme-swatch theme-swatch--dark"></span>
-            <span>Dark</span>
-          </label>
-          <label class="theme-option">
-            <input type="radio" name="theme" value="auto">
-            <span class="theme-swatch theme-swatch--auto"></span>
-            <span>Auto</span>
-          </label>
+          <div class="theme-options">
+            <label class="theme-option">
+              <input type="radio" name="theme" value="light">
+              <span class="theme-swatch theme-swatch--light"></span>
+              <span class="theme-option__label">Light</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="theme" value="dark">
+              <span class="theme-swatch theme-swatch--dark"></span>
+              <span class="theme-option__label">Dark</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="theme" value="auto">
+              <span class="theme-swatch theme-swatch--auto"></span>
+              <span class="theme-option__label">Auto</span>
+            </label>
+          </div>
         </div>
       </div>
     </section>
