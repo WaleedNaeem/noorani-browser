@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <!-- NOORANI_DATA -->
+  <script>
+    (function () {
+      const d = window.__NOORANI_DATA__;
+      if (d && d.effectiveTheme) {
+        document.documentElement.setAttribute('data-theme', d.effectiveTheme);
+      }
+    })();
+  </script>
+  <title>Settings</title>
+  <style>
+    :root[data-theme="light"] {
+      --page-bg:     #faf7f2;
+      --card-bg:     #ffffff;
+      --text:        #2a2a2a;
+      --muted:       #6b6b6b;
+      --accent:      #c9a961;
+      --accent-ink:  #8a6f2b;
+      --border:      #e8e2d5;
+      --hover:       #f5f0e5;
+      --danger:      #b5382a;
+      --danger-bg:   rgba(181, 56, 42, 0.08);
+      --input-bg:    #ffffff;
+      --switch-off:  #cfc4a8;
+    }
+    :root[data-theme="dark"] {
+      --page-bg:     #1a1a1a;
+      --card-bg:     #252525;
+      --text:        #e8e8e8;
+      --muted:       #9a9a9a;
+      --accent:      #d4af37;
+      --accent-ink:  #d4af37;
+      --border:      #3a3a3a;
+      --hover:       #2d2d2d;
+      --danger:      #ef5350;
+      --danger-bg:   rgba(239, 83, 80, 0.12);
+      --input-bg:    #1a1a1a;
+      --switch-off:  #3a3a3a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      min-height: 100vh;
+      background: var(--page-bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px 72px;
+    }
+
+    .page-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-size: 34px;
+      font-weight: 400;
+      margin: 0 0 32px 0;
+      color: var(--text);
+    }
+
+    .section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 20px;
+      margin: 0 0 14px 0;
+      color: var(--accent-ink);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+    .row:first-of-type { border-top: none; padding-top: 0; }
+
+    .row__label {
+      flex: 0 0 180px;
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .row__control { flex: 1 1 auto; min-width: 0; }
+    .row__hint {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 6px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      word-break: break-all;
+    }
+
+    /* Theme radios */
+    .theme-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 18px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .theme-option input[type="radio"] {
+      margin: 0; accent-color: var(--accent);
+    }
+    .theme-swatch {
+      width: 34px; height: 20px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      display: inline-block;
+      flex: 0 0 34px;
+    }
+    .theme-swatch--light { background: linear-gradient(to bottom, #ffffff 50%, #faf7f2 50%); }
+    .theme-swatch--dark  { background: linear-gradient(to bottom, #252525 50%, #1a1a1a 50%); }
+    .theme-swatch--auto  {
+      background: linear-gradient(to right, #faf7f2 0, #faf7f2 50%, #1a1a1a 50%, #1a1a1a 100%);
+    }
+
+    /* Controls */
+    select, input[type="text"] {
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      min-width: 200px;
+      transition: border-color 120ms ease;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+    .input-group { display: flex; gap: 8px; }
+    .input-group input { flex: 1 1 auto; min-width: 0; }
+
+    button {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    button:hover { border-color: var(--accent); background: var(--hover); }
+
+    .btn--danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    .btn--danger:hover {
+      background: var(--danger-bg);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    /* Toggle switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px; height: 22px;
+      cursor: pointer;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch__slider {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--switch-off);
+      border-radius: 22px;
+      transition: background 150ms;
+    }
+    .switch__slider::before {
+      content: '';
+      position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: transform 150ms;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .switch input:checked + .switch__slider { background: var(--accent); }
+    .switch input:checked + .switch__slider::before { transform: translateX(18px); }
+
+    /* Checkboxes */
+    .checkboxes {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .checkboxes label {
+      display: flex; align-items: center; gap: 10px;
+      cursor: pointer; font-size: 13px;
+    }
+    .checkboxes input[type="checkbox"] { accent-color: var(--accent); }
+
+    .clear-status {
+      margin-left: 12px; font-size: 12px;
+      color: var(--muted);
+      transition: opacity 300ms ease;
+    }
+
+    /* About */
+    .about__name {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      font-size: 26px;
+      color: var(--accent-ink);
+      margin-bottom: 4px;
+    }
+    .about__tagline {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+    .about__meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .about__meta a { color: var(--accent-ink); text-decoration: none; }
+    .about__meta a:hover { text-decoration: underline; }
+    .about__meta code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1 class="page-title">Settings</h1>
+
+    <!-- APPEARANCE -->
+    <section class="section">
+      <h2>Appearance</h2>
+      <div class="row">
+        <div class="row__label">Theme</div>
+        <div class="row__control">
+          <label class="theme-option">
+            <input type="radio" name="theme" value="light">
+            <span class="theme-swatch theme-swatch--light"></span>
+            <span>Light</span>
+          </label>
+          <label class="theme-option">
+            <input type="radio" name="theme" value="dark">
+            <span class="theme-swatch theme-swatch--dark"></span>
+            <span>Dark</span>
+          </label>
+          <label class="theme-option">
+            <input type="radio" name="theme" value="auto">
+            <span class="theme-swatch theme-swatch--auto"></span>
+            <span>Auto</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="section">
+      <h2>Search</h2>
+      <div class="row">
+        <div class="row__label">Default engine</div>
+        <div class="row__control">
+          <select id="search-engine"></select>
+          <div class="row__hint" id="engine-url"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOMEPAGE -->
+    <section class="section">
+      <h2>Homepage</h2>
+      <div class="row">
+        <div class="row__label">Use custom homepage</div>
+        <div class="row__control">
+          <label class="switch">
+            <input type="checkbox" id="custom-homepage">
+            <span class="switch__slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="row" id="custom-homepage-row" hidden>
+        <div class="row__label">Custom URL</div>
+        <div class="row__control">
+          <div class="input-group">
+            <input type="text" id="homepage-url" placeholder="https://example.com">
+            <button id="save-homepage">Save</button>
+          </div>
+          <div class="row__hint" id="homepage-status"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRIVACY -->
+    <section class="section">
+      <h2>Clear Browsing Data</h2>
+      <div class="row">
+        <div class="row__label">What to clear</div>
+        <div class="row__control">
+          <div class="checkboxes">
+            <label><input type="checkbox" data-clear="history"> History</label>
+            <label><input type="checkbox" data-clear="bookmarks"> Bookmarks</label>
+            <label><input type="checkbox" data-clear="downloads"> Downloads list</label>
+            <label><input type="checkbox" data-clear="settings"> Reset all settings to defaults</label>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label"></div>
+        <div class="row__control">
+          <button class="btn--danger" id="clear-btn">Clear Selected Data</button>
+          <span class="clear-status" id="clear-status"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="section">
+      <h2>About</h2>
+      <div class="about__name">Noorani Browser</div>
+      <div class="about__tagline">A browser built for the Muslim community</div>
+      <div class="about__meta">
+        <div>Version <code id="version">—</code></div>
+        <div>Electron <code id="electron-version">—</code> &middot; Chromium <code id="chromium-version">—</code></div>
+        <div>Built by Waleed Naeem</div>
+        <div><a href="https://nooraniBrowser.com">nooraniBrowser.com</a></div>
+        <div>&copy; 2025 Noorani Browser</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const DATA = window.__NOORANI_DATA__ || {};
+      const api  = window.nooraniAPI;
+
+      const settings = DATA.settings || {};
+      const engines  = DATA.engines  || {};
+      const versions = DATA.versions || {};
+
+      // ===== Appearance / theme =====
+      document.querySelectorAll('input[name="theme"]').forEach((r) => {
+        if (r.value === settings.theme) r.checked = true;
+        r.addEventListener('change', () => {
+          if (r.checked && api) api.settings.update('theme', r.value);
+        });
+      });
+
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          const t = next._effectiveTheme || next.theme;
+          document.documentElement.setAttribute(
+            'data-theme', t === 'dark' ? 'dark' : 'light'
+          );
+          // Keep radios in sync with server truth (e.g., after reset)
+          document.querySelectorAll('input[name="theme"]').forEach((r) => {
+            r.checked = (r.value === next.theme);
+          });
+        });
+      }
+
+      // ===== Search engine =====
+      const engineSel = document.getElementById('search-engine');
+      const engineHint = document.getElementById('engine-url');
+      for (const [key, eng] of Object.entries(engines)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = eng.name;
+        engineSel.appendChild(opt);
+      }
+      engineSel.value = settings.searchEngine || 'google';
+      function refreshEngineHint() {
+        const eng = engines[engineSel.value];
+        engineHint.textContent = eng ? eng.search + '<your query>' : '';
+      }
+      refreshEngineHint();
+      engineSel.addEventListener('change', () => {
+        if (!api) return;
+        api.settings.update('searchEngine', engineSel.value);
+        refreshEngineHint();
+      });
+
+      // ===== Homepage =====
+      const customToggle  = document.getElementById('custom-homepage');
+      const customRow     = document.getElementById('custom-homepage-row');
+      const homepageInput = document.getElementById('homepage-url');
+      const homepageStatus = document.getElementById('homepage-status');
+
+      customToggle.checked = !!settings.useCustomHomepage;
+      customRow.hidden = !customToggle.checked;
+      if (settings.homepage && settings.homepage !== 'noorani://home') {
+        homepageInput.value = settings.homepage;
+      }
+
+      customToggle.addEventListener('change', () => {
+        customRow.hidden = !customToggle.checked;
+        if (api) api.settings.update('useCustomHomepage', customToggle.checked);
+      });
+
+      document.getElementById('save-homepage').addEventListener('click', async () => {
+        let url = homepageInput.value.trim();
+        if (!url) {
+          homepageStatus.textContent = 'Please enter a URL.';
+          return;
+        }
+        if (!/^[a-z]+:\/\//i.test(url) && !/^noorani:/i.test(url)) {
+          url = 'https://' + url;
+        }
+        try { new URL(url); }
+        catch (_) {
+          homepageStatus.textContent = 'Not a valid URL.';
+          return;
+        }
+        if (api) await api.settings.update('homepage', url);
+        homepageInput.value = url;
+        homepageStatus.textContent = 'Saved.';
+        setTimeout(() => { homepageStatus.textContent = ''; }, 2500);
+      });
+
+      // ===== Clear data =====
+      document.getElementById('clear-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const options = {};
+        document.querySelectorAll('[data-clear]').forEach((cb) => {
+          if (cb.checked) options[cb.dataset.clear] = true;
+        });
+        if (!Object.keys(options).length) return;
+
+        const status = document.getElementById('clear-status');
+        status.textContent = '';
+        const result = await api.browsingData.clear(options);
+        const cleared = (result && result.cleared) || [];
+        if (!cleared.length) return; // user cancelled in the native dialog
+
+        document.querySelectorAll('[data-clear]').forEach((cb) => { cb.checked = false; });
+        status.textContent = 'Cleared: ' + cleared.join(', ');
+        setTimeout(() => { status.textContent = ''; }, 3500);
+
+        if (options.settings) {
+          // Settings reset — reload to refresh UI state (theme, form values).
+          setTimeout(() => location.reload(), 300);
+        }
+      });
+
+      // ===== About =====
+      document.getElementById('version').textContent          = versions.app      || '—';
+      document.getElementById('electron-version').textContent = versions.electron || '—';
+      document.getElementById('chromium-version').textContent = versions.chromium || '—';
+    })();
+  </script>
+</body>
+</html>

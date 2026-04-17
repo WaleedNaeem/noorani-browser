@@ -1,31 +1,83 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
+  <script>
+    // Apply saved theme before styles render, so we don't flash.
+    (function () {
+      try {
+        const saved = localStorage.getItem('noorani-effective-theme');
+        document.documentElement.setAttribute(
+          'data-theme',
+          saved === 'dark' ? 'dark' : 'light'
+        );
+      } catch (_) {}
+    })();
+  </script>
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
-                 script-src 'self';
+                 script-src 'self' 'unsafe-inline';
                  style-src 'self' 'unsafe-inline';
                  img-src 'self' data: https: http:;
                  child-src *; frame-src *;">
   <title>Noorani Browser</title>
   <style>
+    /* =========================================================
+       THEME PALETTES
+       ========================================================= */
+    :root[data-theme="light"] {
+      --bg-primary:       #faf7f2;
+      --bg-toolbar:       #ffffff;
+      --bg-tab-inactive:  #f0ece5;
+      --bg-tab-active:    #ffffff;
+      --text-primary:     #2a2a2a;
+      --text-secondary:   #6b6b6b;
+      --accent-gold:      #c9a961;
+      --border:           #e8e2d5;
+
+      --hover:            rgba(0,0,0,0.05);
+      --active:           rgba(0,0,0,0.1);
+      --panel-bg:         #ffffff;
+      --panel-hover:      #f5f0e5;
+      --panel-border:     #e8e2d5;
+      --input-bg:         #ffffff;
+      --tab-hover:        #e8e2d5;
+      --tab-bar-bg:       #faf7f2;
+      --webview-bg:       #ffffff;
+      --scrollbar-thumb:  #cfc4a8;
+    }
+
+    :root[data-theme="dark"] {
+      --bg-primary:       #1a1a1a;
+      --bg-toolbar:       #252525;
+      --bg-tab-inactive:  #2a2a2a;
+      --bg-tab-active:    #333333;
+      --text-primary:     #e8e8e8;
+      --text-secondary:   #9a9a9a;
+      --accent-gold:      #d4af37;
+      --border:           #3a3a3a;
+
+      --hover:            #303030;
+      --active:           #3a3a3a;
+      --panel-bg:         #1f1f1f;
+      --panel-hover:      #2a2a2a;
+      --panel-border:     #2f2f2f;
+      --input-bg:         #1a1a1a;
+      --tab-hover:        #2d2d2d;
+      --tab-bar-bg:       #1a1a1a;
+      --webview-bg:       #1a1a1a;
+      --scrollbar-thumb:  #3a3a3a;
+    }
+
+    /* Backwards-compatible aliases used throughout the Phase 1–4 CSS. */
     :root {
-      --bg: #1a1a1a;
-      --tab-bar-bg: #1a1a1a;
-      --tab-inactive: #252525;
-      --tab-hover: #2d2d2d;
-      --tab-active: #2a2a2a;
-      --toolbar: #252525;
-      --text: #e0e0e0;
-      --muted: #8a8a8a;
-      --accent: #d4af37;
-      --border: #333333;
-      --hover: #303030;
-      --input-bg: #1a1a1a;
-      --panel-bg: #1f1f1f;
-      --panel-hover: #2a2a2a;
-      --panel-border: #2f2f2f;
+      --bg:           var(--bg-primary);
+      --toolbar:      var(--bg-toolbar);
+      --tab-inactive: var(--bg-tab-inactive);
+      --tab-active:   var(--bg-tab-active);
+      --text:         var(--text-primary);
+      --muted:        var(--text-secondary);
+      --accent:       var(--accent-gold);
     }
 
     * { box-sizing: border-box; }
@@ -45,26 +97,21 @@
       flex: 0 0 36px;
       height: 36px;
       background: var(--tab-bar-bg);
-      display: flex;
-      align-items: stretch;
+      display: flex; align-items: stretch;
       border-bottom: 1px solid var(--border);
       user-select: none;
     }
     .tabs {
       flex: 1 1 auto;
-      display: flex;
-      align-items: stretch;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
+      display: flex; align-items: stretch;
+      overflow-x: auto; overflow-y: hidden;
+      scrollbar-width: none; -ms-overflow-style: none;
     }
     .tabs::-webkit-scrollbar { display: none; }
 
     .tab {
       flex: 0 0 200px;
-      max-width: 200px;
-      min-width: 100px;
+      max-width: 200px; min-width: 100px;
       height: 36px;
       background: var(--tab-inactive);
       border-right: 1px solid var(--border);
@@ -94,7 +141,7 @@
       background: transparent; border: none; border-radius: 3px;
       color: var(--muted); cursor: pointer; padding: 0;
     }
-    .tab__close:hover { background: #444; color: #fff; }
+    .tab__close:hover { background: var(--active); color: var(--text); }
     .tab:hover .tab__close,
     .tab.active .tab__close { display: inline-flex; }
     .tab.loading .tab__favicon { opacity: 0.55; }
@@ -127,7 +174,7 @@
       transition: background-color 120ms ease, color 120ms ease;
     }
     .btn:hover:not(:disabled) { background: var(--hover); }
-    .btn:active:not(:disabled) { background: #3a3a3a; }
+    .btn:active:not(:disabled) { background: var(--active); }
     .btn:disabled { color: var(--muted); opacity: 0.4; cursor: default; }
     .btn svg { width: 18px; height: 18px; display: block; }
 
@@ -142,13 +189,10 @@
       min-width: 14px; height: 14px;
       padding: 0 3px;
       background: var(--accent);
-      color: #1a1a1a;
+      color: var(--bg-primary);
       border-radius: 8px;
-      font-size: 9px;
-      font-weight: 700;
-      line-height: 14px;
-      text-align: center;
-      pointer-events: none;
+      font-size: 9px; font-weight: 700; line-height: 14px;
+      text-align: center; pointer-events: none;
     }
     .dl-badge[hidden] { display: none; }
 
@@ -175,22 +219,22 @@
       flex: 0 0 1px;
     }
 
-    /* ============ CONTENT AREA (webview stack + panel overlay) ============ */
+    /* ============ CONTENT AREA ============ */
     .content {
       flex: 1 1 auto;
       position: relative;
-      background: #ffffff;
+      background: var(--webview-bg);
       overflow: hidden;
     }
     .content webview {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
-      border: 0; background: #ffffff;
+      border: 0; background: var(--webview-bg);
       z-index: 1;
     }
     .content webview.hidden { display: none !important; }
 
-    /* ============ RIGHT-SIDE PANEL ============ */
+    /* ============ PANEL ============ */
     .panel {
       position: absolute;
       top: 0; right: 0; bottom: 0;
@@ -200,7 +244,7 @@
       color: var(--text);
       display: flex; flex-direction: column;
       z-index: 10;
-      box-shadow: -8px 0 24px rgba(0,0,0,0.35);
+      box-shadow: -8px 0 24px rgba(0,0,0,0.2);
     }
     .panel[hidden] { display: none; }
 
@@ -213,8 +257,7 @@
     }
     .panel__title {
       flex: 1; margin: 0;
-      font-size: 13px; font-weight: 600;
-      letter-spacing: 0.3px;
+      font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
     }
     .panel__clear {
       font-size: 11px;
@@ -241,7 +284,7 @@
     }
     .panel__body::-webkit-scrollbar { width: 8px; }
     .panel__body::-webkit-scrollbar-thumb {
-      background: #3a3a3a; border-radius: 4px;
+      background: var(--scrollbar-thumb); border-radius: 4px;
     }
 
     .panel__section { display: none; padding: 0; }
@@ -272,29 +315,24 @@
       color: var(--text);
       border: 1px solid var(--border);
       border-radius: 4px;
-      font-size: 12px;
-      outline: none;
+      font-size: 12px; outline: none;
     }
     .panel__search:focus { border-color: var(--accent); }
 
     .entry {
-      display: flex; align-items: center;
-      gap: 10px;
+      display: flex; align-items: center; gap: 10px;
       padding: 8px 12px;
       cursor: pointer;
       border: none; background: transparent;
       color: var(--text);
-      width: 100%;
-      text-align: left;
+      width: 100%; text-align: left;
     }
     .entry:hover { background: var(--panel-hover); }
     .entry__favicon {
       width: 16px; height: 16px; flex: 0 0 16px;
       object-fit: contain; border-radius: 2px;
     }
-    .entry__text {
-      flex: 1 1 auto; overflow: hidden; min-width: 0;
-    }
+    .entry__text { flex: 1 1 auto; overflow: hidden; min-width: 0; }
     .entry__title {
       font-size: 13px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -315,11 +353,10 @@
     .entry:hover .entry__remove,
     .entry:hover .entry__action { display: inline-flex; }
     .entry__remove:hover, .entry__action:hover {
-      background: #444; color: #fff;
+      background: var(--active); color: var(--text);
     }
     .entry__action {
-      width: auto;
-      padding: 0 8px;
+      width: auto; padding: 0 8px;
       font-size: 11px;
       display: inline-flex !important;
       color: var(--text);
@@ -329,15 +366,12 @@
     .entry__action:hover { border-color: var(--accent); }
 
     .download-entry .progress {
-      margin-top: 4px;
-      height: 3px;
-      background: #2a2a2a;
-      border-radius: 2px;
-      overflow: hidden;
+      margin-top: 4px; height: 3px;
+      background: var(--bg-tab-inactive);
+      border-radius: 2px; overflow: hidden;
     }
     .download-entry .progress__bar {
-      height: 100%;
-      background: var(--accent);
+      height: 100%; background: var(--accent);
       transition: width 180ms ease;
     }
   </style>
@@ -379,7 +413,7 @@
 
     <div class="url-wrap">
       <input id="url" type="text" spellcheck="false" autocomplete="off"
-             placeholder="Search Google or enter a URL" />
+             placeholder="Search or enter a URL" />
     </div>
 
     <button class="btn" id="star-btn" title="Bookmark this page" aria-label="Bookmark">
@@ -408,9 +442,15 @@
       </svg>
       <span class="dl-badge" id="dl-badge" hidden>0</span>
     </button>
+    <button class="btn" id="settings-btn" title="Settings (Ctrl+,)" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
   </div>
 
-  <!-- Content area (webviews + panel overlay) -->
+  <!-- Content area -->
   <div class="content" id="content">
     <aside class="panel" id="panel" hidden>
       <header class="panel__header">

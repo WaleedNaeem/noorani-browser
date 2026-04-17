@@ -1,5 +1,6 @@
 const {
-  app, BrowserWindow, Menu, ipcMain, session, shell, protocol
+  app, BrowserWindow, Menu, ipcMain, session, shell, protocol,
+  nativeTheme, dialog, webContents
 } = require('electron');
 const path = require('path');
 const fs   = require('fs');
@@ -7,8 +8,27 @@ const fs   = require('fs');
 let mainWindow = null;
 
 // ============================================================================
-// Storage layer — JSON files under userData/data/
-// On Windows this resolves to %APPDATA%\noorani-browser\data\
+// Constants
+// ============================================================================
+
+const SETTINGS_DEFAULTS = Object.freeze({
+  theme:              'light',                   // 'light' | 'dark' | 'auto'
+  searchEngine:       'google',
+  homepage:           'noorani://home',
+  useCustomHomepage:  false,
+  version:            1
+});
+
+const SEARCH_ENGINES = Object.freeze({
+  google:     { name: 'Google',     search: 'https://www.google.com/search?q=' },
+  bing:       { name: 'Bing',       search: 'https://www.bing.com/search?q=' },
+  duckduckgo: { name: 'DuckDuckGo', search: 'https://duckduckgo.com/?q=' },
+  brave:      { name: 'Brave',      search: 'https://search.brave.com/search?q=' },
+  ecosia:     { name: 'Ecosia',     search: 'https://www.ecosia.org/search?q=' }
+});
+
+// ============================================================================
+// Storage layer
 // ============================================================================
 
 const dataDir = () => path.join(app.getPath('userData'), 'data');
@@ -41,25 +61,53 @@ function saveJSON(filename, data) {
   }
 }
 
+function loadSettings() {
+  const raw = loadJSON('settings.json', null);
+  const base = (raw && typeof raw === 'object') ? raw : {};
+  const merged = { ...SETTINGS_DEFAULTS, ...base };
+  if (!['light','dark','auto'].includes(merged.theme)) merged.theme = SETTINGS_DEFAULTS.theme;
+  if (!SEARCH_ENGINES[merged.searchEngine])             merged.searchEngine = SETTINGS_DEFAULTS.searchEngine;
+  if (typeof merged.useCustomHomepage !== 'boolean')    merged.useCustomHomepage = SETTINGS_DEFAULTS.useCustomHomepage;
+  if (typeof merged.homepage !== 'string')              merged.homepage = SETTINGS_DEFAULTS.homepage;
+  return merged;
+}
+
+function saveSettings(settings) {
+  saveJSON('settings.json', settings);
+}
+
+function getEffectiveTheme(settings) {
+  if (settings.theme === 'auto') {
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  }
+  return settings.theme;
+}
+
+function getVersions() {
+  return {
+    app:      app.getVersion(),
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    node:     process.versions.node
+  };
+}
+
 // ============================================================================
-// Custom noorani:// protocol (must be registered before app-ready)
+// noorani:// protocol
 // ============================================================================
 
 protocol.registerSchemesAsPrivileged([{
   scheme: 'noorani',
   privileges: {
-    standard: true,
-    secure: true,
-    supportFetchAPI: true,
-    stream: true,
-    bypassCSP: false,
-    allowServiceWorkers: false
+    standard: true, secure: true,
+    supportFetchAPI: true, stream: true,
+    bypassCSP: false, allowServiceWorkers: false
   }
 }]);
 
 function computeTopSites(limit = 6) {
   const history = loadJSON('history.json', []);
-  const counts  = new Map();
+  const counts = new Map();
   for (const h of history) {
     if (!h || !h.url) continue;
     const ex = counts.get(h.url) ||
@@ -85,13 +133,23 @@ function computeTopSites(limit = 6) {
   return top;
 }
 
-function buildHomeHtml() {
-  const templatePath = path.join(__dirname, 'home.html');
+function buildInternalHtml(pageName) {
+  const templatePath = path.join(__dirname, `${pageName}.html`);
+  if (!fs.existsSync(templatePath)) return null;
   const template = fs.readFileSync(templatePath, 'utf-8');
-  const top = computeTopSites(6);
+  const settings = loadSettings();
+  const data = {
+    page:           pageName,
+    topSites:       computeTopSites(6),
+    settings,
+    effectiveTheme: getEffectiveTheme(settings),
+    versions:       getVersions(),
+    engines:        { ...SEARCH_ENGINES }
+  };
   const inject =
-    `<script id="__noorani_data">window.__NOORANI_TOP_SITES__ = ` +
-    `${JSON.stringify(top).replace(/</g, '\\u003c')};</script>`;
+    `<script id="__noorani_data">` +
+    `window.__NOORANI_DATA__ = ${JSON.stringify(data).replace(/</g, '\\u003c')};` +
+    `</script>`;
   return template.replace('<!-- NOORANI_DATA -->', inject);
 }
 
@@ -99,8 +157,14 @@ function registerNooraniProtocol() {
   protocol.handle('noorani', (request) => {
     try {
       const u = new URL(request.url);
-      if (u.hostname === 'home' && (u.pathname === '/' || u.pathname === '')) {
-        return new Response(buildHomeHtml(), {
+      const page = u.hostname;
+      if (u.pathname !== '/' && u.pathname !== '') {
+        return new Response('Not Found', { status: 404 });
+      }
+      if (page === 'home' || page === 'settings') {
+        const html = buildInternalHtml(page);
+        if (!html) return new Response('Template missing', { status: 500 });
+        return new Response(html, {
           status: 200,
           headers: { 'content-type': 'text/html; charset=utf-8' }
         });
@@ -114,17 +178,35 @@ function registerNooraniProtocol() {
 }
 
 // ============================================================================
-// Downloads (session-only tracking)
+// Broadcasts — reach chrome renderer + every webview guest
 // ============================================================================
 
-const downloads       = [];      // serializable info shown to renderer
-const downloadItems   = new Map(); // id -> live DownloadItem (for cancel)
-let   dlCounter       = 0;
+function broadcastToAll(channel, payload) {
+  for (const wc of webContents.getAllWebContents()) {
+    if (!wc.isDestroyed()) {
+      try { wc.send(channel, payload); } catch (_) { /* swallow */ }
+    }
+  }
+}
+
+function broadcastSettings() {
+  const s = loadSettings();
+  broadcastToAll('settings:changed', {
+    ...s,
+    _effectiveTheme: getEffectiveTheme(s)
+  });
+}
+
+// ============================================================================
+// Downloads — session-only tracking
+// ============================================================================
+
+const downloads     = [];
+const downloadItems = new Map();
+let   dlCounter     = 0;
 
 function broadcastDownloads() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('downloads:update', downloads.slice());
-  }
+  broadcastToAll('downloads:update', downloads.slice());
 }
 
 function setupDownloads() {
@@ -151,12 +233,12 @@ function setupDownloads() {
       info.progress      = info.totalBytes > 0
         ? info.receivedBytes / info.totalBytes
         : 0;
-      info.state = state; // 'progressing' | 'interrupted'
+      info.state = state;
       broadcastDownloads();
     });
 
     item.once('done', (_e, state) => {
-      info.state     = state; // 'completed' | 'cancelled' | 'interrupted'
+      info.state     = state;
       info.savedPath = item.getSavePath();
       if (state === 'completed') info.progress = 1;
       downloadItems.delete(id);
@@ -166,7 +248,7 @@ function setupDownloads() {
 }
 
 // ============================================================================
-// IPC handlers — renderer's only door to disk
+// IPC handlers
 // ============================================================================
 
 function registerIpc() {
@@ -187,12 +269,14 @@ function registerIpc() {
         addedAt: Date.now()
       });
       saveJSON('bookmarks.json', list);
+      broadcastToAll('bookmarks:changed', list);
     }
     return list;
   });
   ipcMain.handle('bookmarks:remove', (_e, url) => {
     const list = loadJSON('bookmarks.json', []).filter(b => b.url !== url);
     saveJSON('bookmarks.json', list);
+    broadcastToAll('bookmarks:changed', list);
     return list;
   });
 
@@ -201,11 +285,10 @@ function registerIpc() {
   ipcMain.handle('history:add', (_e, entry) => {
     if (!entry || !entry.url) return;
     const url = entry.url;
-    if (url.startsWith('noorani:') ||
-        url === 'about:blank' ||
-        url.startsWith('about:') ||
+    if (url.startsWith('noorani:')     ||
+        url === 'about:blank'          ||
+        url.startsWith('about:')       ||
         url.startsWith('chrome-error:')) return;
-
     const list = loadJSON('history.json', []);
     list.push({
       url,
@@ -213,12 +296,12 @@ function registerIpc() {
       favicon:   entry.favicon || null,
       visitedAt: entry.visitedAt || Date.now()
     });
-    // Cap to 5000 entries
     if (list.length > 5000) list.splice(0, list.length - 5000);
     saveJSON('history.json', list);
   });
   ipcMain.handle('history:clear', () => {
     saveJSON('history.json', []);
+    broadcastToAll('history:changed', []);
     return [];
   });
 
@@ -239,15 +322,67 @@ function registerIpc() {
     if (item) item.cancel();
   });
 
-  // Home data (for dynamic refresh, not used by static build but available) -
-  ipcMain.handle('home:top-sites', () => computeTopSites(6));
+  // Settings ----------------------------------------------------------------
+  ipcMain.handle('settings:get', () => {
+    const s = loadSettings();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
+  ipcMain.handle('settings:update', (_e, payload) => {
+    if (!payload || typeof payload.key !== 'string') return null;
+    const s = loadSettings();
+    s[payload.key] = payload.value;
+    saveSettings(s);
+    broadcastSettings();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
 
-  // Expose userData path so renderer can show it in UI if needed -----------
-  ipcMain.handle('app:data-dir', () => dataDir());
+  // Clear browsing data -----------------------------------------------------
+  ipcMain.handle('browsing-data:clear', async (_e, options) => {
+    options = options || {};
+    const selected = Object.keys(options).filter(k => options[k]);
+    if (selected.length === 0) return { cleared: [] };
+
+    const labels = {
+      history:   'browsing history',
+      bookmarks: 'bookmarks',
+      downloads: 'downloads list',
+      settings:  'all settings (will reset to defaults)'
+    };
+    const detail = selected.map(k => '• ' + (labels[k] || k)).join('\n');
+
+    const focused = BrowserWindow.getFocusedWindow() || mainWindow;
+    const result = await dialog.showMessageBox(focused || undefined, {
+      type:        'warning',
+      buttons:     ['Cancel', 'Clear'],
+      defaultId:   0,
+      cancelId:    0,
+      title:       'Clear Browsing Data',
+      message:     'This will permanently delete:',
+      detail
+    });
+    if (result.response !== 1) return { cleared: [] };
+
+    if (options.history)   saveJSON('history.json',   []);
+    if (options.bookmarks) saveJSON('bookmarks.json', []);
+    if (options.downloads) { downloads.length = 0; broadcastDownloads(); }
+    if (options.settings)  saveSettings({ ...SETTINGS_DEFAULTS });
+
+    if (options.history)   broadcastToAll('history:changed',   []);
+    if (options.bookmarks) broadcastToAll('bookmarks:changed', []);
+    if (options.settings)  broadcastSettings();
+
+    return { cleared: selected };
+  });
+
+  // Search engines / versions / misc ---------------------------------------
+  ipcMain.handle('search:engines', () => ({ ...SEARCH_ENGINES }));
+  ipcMain.handle('app:versions',   () => getVersions());
+  ipcMain.handle('app:data-dir',   () => dataDir());
+  ipcMain.handle('home:top-sites', () => computeTopSites(6));
 }
 
 // ============================================================================
-// Application menu (accelerators) — Phase 3.5 behavior preserved
+// Menu / accelerators
 // ============================================================================
 
 function sendShortcut(action, ...args) {
@@ -279,12 +414,14 @@ function buildMenu() {
     {
       label: 'Navigation',
       submenu: [
-        { label: 'Back',          accelerator: 'Alt+Left',         click: () => sendShortcut('back') },
-        { label: 'Forward',       accelerator: 'Alt+Right',        click: () => sendShortcut('forward') },
-        { label: 'Reload',        accelerator: 'CmdOrCtrl+R',      click: () => sendShortcut('reload') },
-        { label: 'Reload (F5)',   accelerator: 'F5',               click: () => sendShortcut('reload') },
-        { label: 'Focus URL Bar', accelerator: 'CmdOrCtrl+L',      click: () => sendShortcut('focus-url') },
-        { label: 'Home',          accelerator: 'Alt+Home',         click: () => sendShortcut('home') }
+        { label: 'Back',          accelerator: 'Alt+Left',    click: () => sendShortcut('back') },
+        { label: 'Forward',       accelerator: 'Alt+Right',   click: () => sendShortcut('forward') },
+        { label: 'Reload',        accelerator: 'CmdOrCtrl+R', click: () => sendShortcut('reload') },
+        { label: 'Reload (F5)',   accelerator: 'F5',          click: () => sendShortcut('reload') },
+        { label: 'Focus URL Bar', accelerator: 'CmdOrCtrl+L', click: () => sendShortcut('focus-url') },
+        { label: 'Home',          accelerator: 'Alt+Home',    click: () => sendShortcut('home') },
+        { type: 'separator' },
+        { label: 'Settings',      accelerator: 'CmdOrCtrl+,', click: () => sendShortcut('open-settings') }
       ]
     },
     {
@@ -304,11 +441,11 @@ function buildMenu() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width:             1280,
-    height:            800,
-    title:             'Noorani Browser',
-    backgroundColor:   '#1a1a1a',
-    autoHideMenuBar:   true,
+    width:           1280,
+    height:          800,
+    title:           'Noorani Browser',
+    backgroundColor: '#faf7f2',
+    autoHideMenuBar: true,
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -333,6 +470,12 @@ app.whenReady().then(() => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // "auto" theme follows the OS — re-broadcast when it flips
+  nativeTheme.on('updated', () => {
+    const s = loadSettings();
+    if (s.theme === 'auto') broadcastSettings();
   });
 });
 

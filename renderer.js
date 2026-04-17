@@ -1,35 +1,39 @@
-// Noorani Browser — renderer.js (Phase 4: bookmarks/history/downloads/home)
+// Noorani Browser — renderer.js (Phase 5: settings, themes, search engine)
 //
-// Runs with contextIsolation=true, nodeIntegration=false.
-// All disk-touching operations go through window.nooraniAPI (see preload.js).
+// contextIsolation=true, nodeIntegration=false. Everything disk-bound goes
+// through window.nooraniAPI (preload.js).
 
-// ------- DOM refs: toolbar / tabs --------
-const tabsEl        = document.getElementById('tabs');
-const newTabBtn     = document.getElementById('new-tab');
-const contentEl     = document.getElementById('content');
-const urlInput      = document.getElementById('url');
-const backBtn       = document.getElementById('back');
-const forwardBtn    = document.getElementById('forward');
-const reloadBtn     = document.getElementById('reload');
-const homeBtn       = document.getElementById('home-btn');
-const starBtn       = document.getElementById('star-btn');
-const bookmarksBtn  = document.getElementById('bookmarks-btn');
-const historyBtn    = document.getElementById('history-btn');
-const downloadsBtn  = document.getElementById('downloads-btn');
-const dlBadge       = document.getElementById('dl-badge');
+// ------- DOM refs --------
+const tabsEl         = document.getElementById('tabs');
+const newTabBtn      = document.getElementById('new-tab');
+const contentEl      = document.getElementById('content');
+const urlInput       = document.getElementById('url');
+const backBtn        = document.getElementById('back');
+const forwardBtn     = document.getElementById('forward');
+const reloadBtn      = document.getElementById('reload');
+const homeBtn        = document.getElementById('home-btn');
+const starBtn        = document.getElementById('star-btn');
+const bookmarksBtn   = document.getElementById('bookmarks-btn');
+const historyBtn     = document.getElementById('history-btn');
+const downloadsBtn   = document.getElementById('downloads-btn');
+const settingsBtn    = document.getElementById('settings-btn');
+const dlBadge        = document.getElementById('dl-badge');
 
-// ------- DOM refs: panel --------
-const panelEl       = document.getElementById('panel');
-const panelTitle    = document.getElementById('panel-title');
-const panelClose    = document.getElementById('panel-close');
-const panelClear    = document.getElementById('panel-clear');
-const bookmarksList = document.getElementById('bookmarks-list');
-const historyList   = document.getElementById('history-list');
+const panelEl        = document.getElementById('panel');
+const panelTitle     = document.getElementById('panel-title');
+const panelClose     = document.getElementById('panel-close');
+const panelClear     = document.getElementById('panel-clear');
+const bookmarksList  = document.getElementById('bookmarks-list');
+const historyList    = document.getElementById('history-list');
 const downloadsListEl = document.getElementById('downloads-list');
-const historySearch = document.getElementById('history-search');
+const historySearch  = document.getElementById('history-search');
 
-// ------- Constants --------
-const HOMEPAGE = 'noorani://home';
+// ------- Constants / resources --------
+const INTERNAL_HOMEPAGE = 'noorani://home';
+const INTERNAL_SETTINGS = 'noorani://settings';
+
+// webview preload — same preload.js, activated only on trusted schemes.
+const PRELOAD_URL = new URL('preload.js', window.location.href).href;
 
 const FALLBACK_FAVICON =
   'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -48,7 +52,21 @@ const PANEL_TITLES = {
   downloads: 'Downloads'
 };
 
-// ------- State --------
+// Search engine URL prefixes — filled in once at startup from the API.
+let SEARCH_ENGINES = {
+  google: { name: 'Google', search: 'https://www.google.com/search?q=' }
+};
+
+// Live settings cache — mutated on settings:changed.
+let currentSettings = {
+  theme:             'light',
+  searchEngine:      'google',
+  homepage:          INTERNAL_HOMEPAGE,
+  useCustomHomepage: false,
+  _effectiveTheme:   'light'
+};
+
+// ------- Tab state --------
 const tabs = [];
 let currentTabId = null;
 let nextIdCounter = 1;
@@ -57,6 +75,29 @@ let downloadsState = [];
 
 function activeTab() {
   return tabs.find(t => t.id === currentTabId) || null;
+}
+
+// ============ Theme + homepage + engine helpers ============
+
+function applyTheme(effective) {
+  const theme = (effective === 'dark') ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem('noorani-effective-theme', theme); } catch (_) {}
+}
+
+function getSearchPrefix() {
+  const engine = SEARCH_ENGINES[currentSettings.searchEngine]
+              || SEARCH_ENGINES.google;
+  return engine.search;
+}
+
+function getHomepage() {
+  if (currentSettings.useCustomHomepage &&
+      currentSettings.homepage &&
+      currentSettings.homepage !== INTERNAL_HOMEPAGE) {
+    return currentSettings.homepage;
+  }
+  return INTERNAL_HOMEPAGE;
 }
 
 // ============ URL parsing ============
@@ -73,7 +114,7 @@ function parseInput(raw) {
   if (!/\s/.test(input) && hostPart.includes('.') && !hostPart.endsWith('.')) {
     return 'https://' + input;
   }
-  return 'https://www.google.com/search?q=' + encodeURIComponent(input);
+  return getSearchPrefix() + encodeURIComponent(input);
 }
 
 function navigate(raw) {
@@ -82,24 +123,23 @@ function navigate(raw) {
   if (target && tab) tab.webview.loadURL(target);
 }
 
-// Show internal URLs as blank in the URL bar (cleaner UX).
 function urlBarValueFor(url) {
   if (!url || url.startsWith('noorani:')) return '';
   return url;
 }
 
-// ============ Escape helper for innerHTML-free row rendering ============
+// ============ DOM builder helper ============
 
 function el(tag, attrs, ...children) {
   const n = document.createElement(tag);
   if (attrs) {
     for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'className')      n.className = v;
-      else if (k === 'text')       n.textContent = v;
-      else if (k === 'onClick')    n.addEventListener('click', v);
+      if (k === 'className')    n.className = v;
+      else if (k === 'text')     n.textContent = v;
+      else if (k === 'onClick')  n.addEventListener('click', v);
       else if (v === false || v == null) continue;
-      else if (v === true)         n.setAttribute(k, '');
-      else                         n.setAttribute(k, v);
+      else if (v === true)       n.setAttribute(k, '');
+      else                       n.setAttribute(k, v);
     }
   }
   for (const c of children) {
@@ -116,12 +156,14 @@ function hostLabel(url) {
 
 // ============ Tab creation ============
 
-function createTab(url = HOMEPAGE) {
+function createTab(url) {
+  const openUrl = url || getHomepage();
   const id = newId();
 
   const webview = document.createElement('webview');
-  webview.setAttribute('src', url);
+  webview.setAttribute('src', openUrl);
   webview.setAttribute('allowpopups', '');
+  webview.setAttribute('preload', PRELOAD_URL);
   webview.classList.add('hidden');
 
   const tabEl = document.createElement('div');
@@ -156,10 +198,10 @@ function createTab(url = HOMEPAGE) {
   const tab = {
     id, webview, tabEl, favEl, titleEl, closeEl,
     title: null,
-    url,
+    url: openUrl,
     favicon: null,
     isLoading: true,
-    _loggedUrl: null   // last URL we've committed to history
+    _loggedUrl: null
   };
   tabs.push(tab);
 
@@ -188,8 +230,8 @@ function wireTab(tab) {
 
   wv.addEventListener('did-navigate', (e) => {
     tab.url = e.url;
-    tab._loggedUrl = null;      // reset so the new URL can be logged once
-    tab.title = null;           // will be refilled by page-title-updated
+    tab._loggedUrl = null;
+    tab.title = null;
     tab.titleEl.textContent = hostLabel(e.url) || 'Loading…';
     if (tab.id === currentTabId) {
       urlInput.value = urlBarValueFor(e.url);
@@ -213,8 +255,6 @@ function wireTab(tab) {
     tab.titleEl.textContent = tab.title || hostLabel(tab.url) || 'Untitled';
     tab.tabEl.title = tab.title || '';
     if (tab.id === currentTabId) syncWindowTitle();
-
-    // Primary history commit — we have a title now.
     maybeLogHistory(tab);
   });
 
@@ -238,8 +278,6 @@ function wireTab(tab) {
     tab.isLoading = false;
     tab.tabEl.classList.remove('loading');
     if (tab.id === currentTabId) updateNavButtons();
-    // Backup history commit — for pages that never fired page-title-updated
-    // (e.g., raw PDFs, file downloads that land as navigations).
     maybeLogHistory(tab);
   });
 
@@ -253,7 +291,6 @@ function wireTab(tab) {
   });
 }
 
-// Log each URL to history at most once per navigation.
 function maybeLogHistory(tab) {
   if (!tab.url) return;
   if (tab._loggedUrl === tab.url) return;
@@ -270,7 +307,6 @@ function maybeLogHistory(tab) {
 function switchToTab(id) {
   const tab = tabs.find(t => t.id === id);
   if (!tab) return;
-
   for (const t of tabs) {
     const isActive = (t.id === id);
     t.webview.classList.toggle('hidden', !isActive);
@@ -298,7 +334,6 @@ function closeTab(id) {
     window.close();
     return;
   }
-
   if (currentTabId === id) {
     const newIdx = Math.min(idx, tabs.length - 1);
     switchToTab(tabs[newIdx].id);
@@ -309,10 +344,7 @@ function closeTab(id) {
 
 function updateNavButtons() {
   const tab = activeTab();
-  if (!tab) {
-    backBtn.disabled = true; forwardBtn.disabled = true;
-    return;
-  }
+  if (!tab) { backBtn.disabled = true; forwardBtn.disabled = true; return; }
   try {
     backBtn.disabled    = !tab.webview.canGoBack();
     forwardBtn.disabled = !tab.webview.canGoForward();
@@ -324,7 +356,6 @@ function updateNavButtons() {
 function syncWindowTitle() {
   const tab = activeTab();
   if (!tab) { document.title = 'Noorani Browser'; return; }
-  // Internal pages: show just the app name, not "New Tab - Noorani Browser"
   if (tab.url && tab.url.startsWith('noorani:')) {
     document.title = 'Noorani Browser';
     return;
@@ -361,70 +392,54 @@ urlInput.addEventListener('keydown', (e) => {
     urlInput.blur();
   }
 });
-backBtn.addEventListener('click', () => {
-  const tab = activeTab();
-  if (tab && tab.webview.canGoBack()) tab.webview.goBack();
-});
-forwardBtn.addEventListener('click', () => {
-  const tab = activeTab();
-  if (tab && tab.webview.canGoForward()) tab.webview.goForward();
-});
-reloadBtn.addEventListener('click', () => {
-  const tab = activeTab();
-  if (tab) tab.webview.reload();
-});
-newTabBtn.addEventListener('click', () => {
-  createTab();
-  focusURLBar();
-});
-homeBtn.addEventListener('click', () => goHome());
+backBtn.addEventListener('click',    () => { const t = activeTab(); if (t && t.webview.canGoBack())    t.webview.goBack(); });
+forwardBtn.addEventListener('click', () => { const t = activeTab(); if (t && t.webview.canGoForward()) t.webview.goForward(); });
+reloadBtn.addEventListener('click',  () => { const t = activeTab(); if (t) t.webview.reload(); });
+newTabBtn.addEventListener('click',  () => { createTab(); focusURLBar(); });
+homeBtn.addEventListener('click',    () => goHome());
+settingsBtn.addEventListener('click',() => openSettings());
 
-// ============ Shortcut action helpers ============
+// ============ Shortcut helpers ============
 
-function focusURLBar() {
-  urlInput.focus();
-  urlInput.select();
-}
+function focusURLBar() { urlInput.focus(); urlInput.select(); }
 
 function closeActiveTab() {
   const tab = activeTab();
   if (!tab) return;
   if (tabs.length === 1) {
-    createTab(HOMEPAGE);
+    createTab();
     closeTab(tab.id);
   } else {
     closeTab(tab.id);
   }
 }
-
 function cycleTab(delta) {
   if (tabs.length < 2) return;
   const idx = tabs.findIndex(t => t.id === currentTabId);
   const next = ((idx + delta) % tabs.length + tabs.length) % tabs.length;
   switchToTab(tabs[next].id);
 }
-function switchToIndex(n) {
-  const t = tabs[n - 1];
-  if (t) switchToTab(t.id);
-}
+function switchToIndex(n) { const t = tabs[n - 1]; if (t) switchToTab(t.id); }
 function backActive()    { const t = activeTab(); if (t && t.webview.canGoBack())    t.webview.goBack(); }
 function forwardActive() { const t = activeTab(); if (t && t.webview.canGoForward()) t.webview.goForward(); }
 function reloadActive()  { const t = activeTab(); if (t) t.webview.reload(); }
-function goHome()        { const t = activeTab(); if (t) t.webview.loadURL(HOMEPAGE); }
+function goHome()        { const t = activeTab(); if (t) t.webview.loadURL(getHomepage()); }
+function openSettings()  { const t = activeTab(); if (t) t.webview.loadURL(INTERNAL_SETTINGS); }
 
 if (window.nooraniAPI && typeof window.nooraniAPI.onShortcut === 'function') {
   window.nooraniAPI.onShortcut((action, ...args) => {
     switch (action) {
-      case 'new-tab':    createTab(); focusURLBar(); break;
-      case 'close-tab':  closeActiveTab(); break;
-      case 'next-tab':   cycleTab(+1); break;
-      case 'prev-tab':   cycleTab(-1); break;
-      case 'switch-tab': switchToIndex(args[0]); break;
-      case 'back':       backActive(); break;
-      case 'forward':    forwardActive(); break;
-      case 'reload':     reloadActive(); break;
-      case 'focus-url':  focusURLBar(); break;
-      case 'home':       goHome(); break;
+      case 'new-tab':       createTab(); focusURLBar(); break;
+      case 'close-tab':     closeActiveTab(); break;
+      case 'next-tab':      cycleTab(+1); break;
+      case 'prev-tab':      cycleTab(-1); break;
+      case 'switch-tab':    switchToIndex(args[0]); break;
+      case 'back':          backActive(); break;
+      case 'forward':       forwardActive(); break;
+      case 'reload':        reloadActive(); break;
+      case 'focus-url':     focusURLBar(); break;
+      case 'home':          goHome(); break;
+      case 'open-settings': openSettings(); break;
     }
   });
 }
@@ -447,12 +462,9 @@ starBtn.addEventListener('click', async () => {
     });
   }
   await syncStar();
-  if (panelEl.dataset.current === 'bookmarks' && !panelEl.hidden) {
-    renderBookmarksPanel();
-  }
 });
 
-// ============ Side panel (bookmarks / history / downloads) ============
+// ============ Side panel ============
 
 function openPanel(which) {
   if (panelEl.dataset.current === which && !panelEl.hidden) {
@@ -473,7 +485,6 @@ function openPanel(which) {
   ]) {
     btn.classList.toggle('panel-open', name === which);
   }
-
   if (which === 'bookmarks') renderBookmarksPanel();
   if (which === 'history')   renderHistoryPanel();
   if (which === 'downloads') renderDownloadsPanel();
@@ -495,10 +506,8 @@ panelClose.addEventListener  ('click', closePanel);
 panelClear.addEventListener('click', async () => {
   if (!confirm('Clear all browsing history? This cannot be undone.')) return;
   await window.nooraniAPI.history.clear();
-  renderHistoryPanel();
 });
 
-// Esc closes the panel
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !panelEl.hidden) closePanel();
 });
@@ -525,8 +534,6 @@ async function renderBookmarksPanel() {
         title: 'Remove bookmark',
         onClick: async () => {
           await window.nooraniAPI.bookmarks.remove(b.url);
-          renderBookmarksPanel();
-          syncStar();
         }
       }]
     }));
@@ -539,7 +546,6 @@ let _historyFilter = '';
 
 async function renderHistoryPanel() {
   const all = await window.nooraniAPI.history.get();
-  // Newest first — history.json appends in chronological order.
   const sorted = all.slice().reverse();
   const q = _historyFilter.toLowerCase().trim();
   const filtered = q
@@ -549,7 +555,6 @@ async function renderHistoryPanel() {
     : sorted;
 
   historyList.textContent = '';
-
   if (!filtered.length) {
     historyList.appendChild(
       el('div', { className: 'panel__empty' },
@@ -558,15 +563,15 @@ async function renderHistoryPanel() {
   }
 
   const now = new Date();
-  const startOfToday = new Date(now); startOfToday.setHours(0,0,0,0);
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+  const today = new Date(now); today.setHours(0,0,0,0);
+  const yesterday = new Date(today.getTime() - 86400000);
 
   const groups = { today: [], yesterday: [], older: [] };
   for (const h of filtered) {
     const t = h.visitedAt || 0;
-    if (t >= startOfToday.getTime())     groups.today.push(h);
-    else if (t >= startOfYesterday.getTime()) groups.yesterday.push(h);
-    else                                  groups.older.push(h);
+    if (t >= today.getTime())           groups.today.push(h);
+    else if (t >= yesterday.getTime())  groups.yesterday.push(h);
+    else                                groups.older.push(h);
   }
 
   const sections = [
@@ -613,29 +618,29 @@ function renderDownloadsPanel() {
       d.state === 'interrupted' ? 'Failed' :
                                   pct + '%';
 
+    const progress = isActive
+      ? el('div', { className: 'progress' },
+          el('div', { className: 'progress__bar' }))
+      : null;
+
     const text = el('div', { className: 'entry__text' },
       el('div', { className: 'entry__title', text: d.filename || '(unnamed)' }),
       el('div', { className: 'entry__url',   text: stateLabel }),
-      isActive
-        ? el('div', { className: 'progress' },
-            el('div', { className: 'progress__bar', style: `width: ${pct}%` }))
-        : null
+      progress
     );
-    // "style" via attribute didn't apply via our el helper — apply directly:
-    const bar = text.querySelector('.progress__bar');
-    if (bar) bar.style.width = pct + '%';
+    if (progress) {
+      progress.querySelector('.progress__bar').style.width = pct + '%';
+    }
 
     const row = el('div', { className: 'entry download-entry' }, text);
 
     if (d.state === 'completed') {
       row.appendChild(el('button', {
-        className: 'entry__action',
-        title: 'Open file',
+        className: 'entry__action', title: 'Open file',
         onClick: () => window.nooraniAPI.downloads.openFile(d.id)
       }, 'Open'));
       row.appendChild(el('button', {
-        className: 'entry__action',
-        title: 'Show in folder',
+        className: 'entry__action', title: 'Show in folder',
         onClick: () => window.nooraniAPI.downloads.openFolder(d.id)
       }, 'Folder'));
     } else if (isActive) {
@@ -644,7 +649,6 @@ function renderDownloadsPanel() {
         onClick: () => window.nooraniAPI.downloads.cancel(d.id)
       }, 'Cancel'));
     }
-
     downloadsListEl.appendChild(row);
   }
 }
@@ -661,22 +665,7 @@ function updateDownloadsBadge() {
   }
 }
 
-if (window.nooraniAPI && window.nooraniAPI.downloads) {
-  window.nooraniAPI.downloads.onUpdate((list) => {
-    downloadsState = list;
-    updateDownloadsBadge();
-    if (panelEl.dataset.current === 'downloads' && !panelEl.hidden) {
-      renderDownloadsPanel();
-    }
-  });
-  // Pull initial state (empty until a download starts this session)
-  window.nooraniAPI.downloads.get().then((list) => {
-    downloadsState = list || [];
-    updateDownloadsBadge();
-  });
-}
-
-// ============ Shared entry-row renderer ============
+// ============ Shared entry row ============
 
 function renderEntryRow({ favicon, title, url, onOpen, actions }) {
   const row = el('button', {
@@ -688,7 +677,6 @@ function renderEntryRow({ favicon, title, url, onOpen, actions }) {
       onOpen && onOpen(e);
     }
   });
-
   const fav = el('img', {
     className: 'entry__favicon',
     src: favicon || FALLBACK_FAVICON,
@@ -700,27 +688,19 @@ function renderEntryRow({ favicon, title, url, onOpen, actions }) {
     el('div', { className: 'entry__title', text: title }),
     el('div', { className: 'entry__url',   text: url })
   );
-
   row.append(fav, text);
 
   if (actions && actions.length) {
     for (const a of actions) {
       row.appendChild(el('button', {
-        className: 'entry__remove',
-        title: a.title || '',
-        type: 'button',
-        onClick: (e) => {
-          e.stopPropagation();
-          a.onClick && a.onClick();
-        }
+        className: 'entry__remove', title: a.title || '', type: 'button',
+        onClick: (e) => { e.stopPropagation(); a.onClick && a.onClick(); }
       }, a.label));
     }
   }
   return row;
 }
 
-// Open a URL (from bookmark/history/shortcut).
-// Ctrl/Meta+click → open in a new tab. Otherwise → active tab.
 function openFromEntry(url, event) {
   if (event && (event.ctrlKey || event.metaKey)) {
     createTab(url);
@@ -731,7 +711,69 @@ function openFromEntry(url, event) {
   }
 }
 
+// ============ Live data subscriptions ============
+
+const api = window.nooraniAPI;
+
+if (api && api.downloads) {
+  api.downloads.onUpdate((list) => {
+    downloadsState = list || [];
+    updateDownloadsBadge();
+    if (panelEl.dataset.current === 'downloads' && !panelEl.hidden) {
+      renderDownloadsPanel();
+    }
+  });
+  api.downloads.get().then((list) => {
+    downloadsState = list || [];
+    updateDownloadsBadge();
+  });
+}
+
+if (api && api.bookmarks && api.bookmarks.onChange) {
+  api.bookmarks.onChange(() => {
+    syncStar();
+    if (panelEl.dataset.current === 'bookmarks' && !panelEl.hidden) {
+      renderBookmarksPanel();
+    }
+  });
+}
+
+if (api && api.history && api.history.onChange) {
+  api.history.onChange(() => {
+    if (panelEl.dataset.current === 'history' && !panelEl.hidden) {
+      renderHistoryPanel();
+    }
+  });
+}
+
+if (api && api.settings && api.settings.onChange) {
+  api.settings.onChange((next) => {
+    currentSettings = { ...currentSettings, ...next };
+    applyTheme(next._effectiveTheme || next.theme);
+    // Note: engine / homepage updates apply to next actions;
+    // we don't retroactively change current tabs' URLs.
+  });
+}
+
 // ============ Startup ============
 
-createTab(HOMEPAGE);
-focusURLBar();
+async function boot() {
+  try {
+    const [settings, engines] = await Promise.all([
+      api ? api.settings.get()    : null,
+      api ? api.search.getEngines() : null
+    ]);
+    if (engines) SEARCH_ENGINES = engines;
+    if (settings) {
+      currentSettings = settings;
+      applyTheme(settings._effectiveTheme || settings.theme);
+    }
+  } catch (err) {
+    console.error('[noorani] settings bootstrap failed:', err);
+  }
+
+  createTab();           // opens to getHomepage()
+  focusURLBar();
+}
+
+boot();
