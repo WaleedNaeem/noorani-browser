@@ -20,6 +20,9 @@ const settingsBtn    = document.getElementById('settings-btn');
 const dlBadge        = document.getElementById('dl-badge');
 
 const loadingBarEl   = document.getElementById('loading-bar');
+const bookmarkBarEl  = document.getElementById('bookmark-bar');
+const bookmarkItemsEl= document.getElementById('bookmark-bar-items');
+const bookmarkOverflowBtn = document.getElementById('bookmark-bar-overflow');
 const panelEl        = document.getElementById('panel');
 const panelTitle     = document.getElementById('panel-title');
 const panelClose     = document.getElementById('panel-close');
@@ -285,6 +288,7 @@ function wireTab(tab) {
       urlInput.value = urlBarValueFor(e.url);
       updateNavButtons();
       syncStar();
+      updateBookmarkBarVisibility();
     }
   });
 
@@ -295,6 +299,7 @@ function wireTab(tab) {
       urlInput.value = urlBarValueFor(e.url);
       updateNavButtons();
       syncStar();
+      updateBookmarkBarVisibility();
     }
   });
 
@@ -377,6 +382,7 @@ function switchToTab(id) {
   updateNavButtons();
   syncStar();
   syncLoadingBar();
+  updateBookmarkBarVisibility();
   tab.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -502,8 +508,9 @@ if (window.nooraniAPI && typeof window.nooraniAPI.onShortcut === 'function') {
       case 'forward':       forwardActive(); break;
       case 'reload':        reloadActive(); break;
       case 'focus-url':     focusURLBar(); break;
-      case 'home':          goHome(); break;
-      case 'open-settings': openSettings(); break;
+      case 'home':                 goHome(); break;
+      case 'open-settings':        openSettings(); break;
+      case 'toggle-bookmark-bar':  toggleBookmarkBarMode(); break;
     }
   });
 }
@@ -785,6 +792,265 @@ function openFromEntry(url, event) {
   }
 }
 
+// ============ Bookmark bar ============
+
+const FALLBACK_FAV_URL = FALLBACK_FAVICON;
+let bookmarkBarCache     = [];
+let bookmarkBarFirst     = true;
+let bookmarkBarKnownUrls = new Set();
+let bookmarkBarOverflow  = [];   // bookmarks that didn't fit on the bar
+let openBookmarkMenu     = null; // floating menu element currently shown, if any
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n - 1) + '…' : str;
+}
+
+function bookmarkBarModeShouldShow() {
+  const mode = (currentSettings.ui && currentSettings.ui.showBookmarkBar) || 'always';
+  if (mode === 'never') return false;
+  if (mode === 'always') return true;
+  // 'new-tab-only' — visible only on noorani://home.
+  const tab = activeTab();
+  const url = tab && tab.url;
+  return !!url && url.startsWith(INTERNAL_HOMEPAGE);
+}
+
+function updateBookmarkBarVisibility() {
+  if (!bookmarkBarEl) return;
+  const show = bookmarkBarModeShouldShow();
+  // Element starts with visibility: hidden + .is-hidden so we never
+  // flash a 36px strip during bootstrap. Once we've decided, reveal it.
+  bookmarkBarEl.style.visibility = '';
+  bookmarkBarEl.classList.toggle('is-hidden', !show);
+}
+
+function buildBookmarkItemNode(b) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'bookmark-item';
+  btn.title = b.title || b.url;
+  btn._bookmark = b;
+
+  const img = document.createElement('img');
+  img.className = 'bookmark-item__fav';
+  img.alt = '';
+  img.src = b.favicon || FALLBACK_FAV_URL;
+  img.onerror = () => { img.onerror = null; img.src = FALLBACK_FAV_URL; };
+
+  const span = document.createElement('span');
+  span.className = 'bookmark-item__title';
+  span.textContent = truncate(b.title || hostLabel(b.url) || b.url, 20);
+
+  btn.append(img, span);
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      createTab(b.url);
+    } else {
+      const tab = activeTab();
+      if (tab) tab.webview.loadURL(b.url);
+    }
+  });
+  btn.addEventListener('mousedown', (e) => {
+    if (e.button === 1) {           // middle click → new tab
+      e.preventDefault();
+      createTab(b.url);
+    }
+  });
+  btn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showBookmarkContextMenu(b, btn, e.clientX, e.clientY);
+  });
+
+  return btn;
+}
+
+function renderBookmarkBar() {
+  if (!bookmarkItemsEl) return;
+
+  const items = bookmarkBarCache.slice().reverse(); // newest first
+  bookmarkItemsEl.textContent = '';
+  bookmarkBarOverflow = [];
+  bookmarkOverflowBtn.classList.remove('is-visible');
+
+  if (items.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'bookmark-bar__empty';
+    empty.textContent = 'Bookmark a page to add it here';
+    bookmarkItemsEl.appendChild(empty);
+    bookmarkBarKnownUrls.clear();
+    bookmarkBarFirst = false;
+    return;
+  }
+
+  const nodes = items.map((b) => {
+    const node = buildBookmarkItemNode(b);
+    // Subtle fade-in only for bookmarks that are genuinely new (not the
+    // initial render).
+    if (!bookmarkBarFirst && !bookmarkBarKnownUrls.has(b.url)) {
+      node.classList.add('is-entering');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => node.classList.remove('is-entering'));
+      });
+    }
+    return node;
+  });
+  nodes.forEach(n => bookmarkItemsEl.appendChild(n));
+
+  bookmarkBarKnownUrls = new Set(items.map(b => b.url));
+  bookmarkBarFirst = false;
+
+  // Measure overflow after layout. Any item whose right edge exceeds the
+  // container (minus 36px reserved for the overflow button) is hidden
+  // and added to the dropdown list.
+  requestAnimationFrame(() => {
+    const containerRight = bookmarkItemsEl.getBoundingClientRect().right;
+    const threshold = containerRight - 36;
+    for (let i = 0; i < nodes.length; i++) {
+      const r = nodes[i].getBoundingClientRect();
+      if (r.right > threshold) {
+        nodes[i].style.display = 'none';
+        bookmarkBarOverflow.push(items[i]);
+      }
+    }
+    if (bookmarkBarOverflow.length > 0) {
+      bookmarkOverflowBtn.classList.add('is-visible');
+    }
+  });
+}
+
+// Close whatever floating menu is open (overflow dropdown or context).
+function closeBookmarkMenu() {
+  if (!openBookmarkMenu) return;
+  const m = openBookmarkMenu;
+  openBookmarkMenu = null;
+  m.classList.remove('is-open');
+  setTimeout(() => { if (m.parentNode) m.remove(); }, 140);
+  document.removeEventListener('mousedown', onOutsideMenuClick, true);
+  document.removeEventListener('keydown',   onMenuEscape,        true);
+}
+function onOutsideMenuClick(e) {
+  if (openBookmarkMenu && !openBookmarkMenu.contains(e.target)) closeBookmarkMenu();
+}
+function onMenuEscape(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeBookmarkMenu(); }
+}
+
+function openFloatingMenu(x, y) {
+  closeBookmarkMenu();
+  const m = document.createElement('div');
+  m.className = 'bookmark-menu';
+  document.body.appendChild(m);
+  openBookmarkMenu = m;
+
+  // Position after it's in the DOM so we can measure.
+  requestAnimationFrame(() => {
+    const rect = m.getBoundingClientRect();
+    let left = x;
+    let top  = y;
+    if (left + rect.width  > window.innerWidth  - 8) left = window.innerWidth  - rect.width  - 8;
+    if (top  + rect.height > window.innerHeight - 8) top  = window.innerHeight - rect.height - 8;
+    m.style.left = Math.max(8, left) + 'px';
+    m.style.top  = Math.max(8, top)  + 'px';
+    m.classList.add('is-open');
+  });
+
+  document.addEventListener('mousedown', onOutsideMenuClick, true);
+  document.addEventListener('keydown',   onMenuEscape,        true);
+  return m;
+}
+
+function menuItem(label, onClick, opts) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'bookmark-menu__item';
+  if (opts && opts.danger) btn.classList.add('is-danger');
+  btn.textContent = label;
+  btn.addEventListener('click', () => {
+    closeBookmarkMenu();
+    onClick();
+  });
+  return btn;
+}
+
+function showBookmarkContextMenu(bookmark, _node, x, y) {
+  const m = openFloatingMenu(x, y);
+  m.appendChild(menuItem('Open',                () => {
+    const tab = activeTab();
+    if (tab) tab.webview.loadURL(bookmark.url);
+  }));
+  m.appendChild(menuItem('Open in new tab',     () => createTab(bookmark.url)));
+  m.appendChild(menuItem('Edit…',               () => editBookmark(bookmark)));
+  const sep = document.createElement('div'); sep.className = 'bookmark-menu__sep';
+  m.appendChild(sep);
+  m.appendChild(menuItem('Delete',              () => deleteBookmark(bookmark.url), { danger: true }));
+}
+
+async function editBookmark(bookmark) {
+  const next = await window.nooraniModal.prompt({
+    title:        'Edit Bookmark',
+    message:      'Change the display title for this bookmark.',
+    defaultValue: bookmark.title || '',
+    placeholder:  'Bookmark title',
+    confirmText:  'Save'
+  });
+  if (next === null) return;
+  const title = next.trim();
+  if (!title || title === bookmark.title) return;
+  await window.nooraniAPI.bookmarks.update(bookmark.url, title);
+}
+
+async function deleteBookmark(url) {
+  await window.nooraniAPI.bookmarks.remove(url);
+}
+
+function showOverflowDropdown() {
+  if (bookmarkBarOverflow.length === 0) return;
+  const rect = bookmarkOverflowBtn.getBoundingClientRect();
+  const m = openFloatingMenu(rect.right - 200, rect.bottom + 4);
+  m.style.minWidth = '220px';
+  for (const b of bookmarkBarOverflow) {
+    const item = menuItem(truncate(b.title || hostLabel(b.url) || b.url, 36), () => {
+      const tab = activeTab();
+      if (tab) tab.webview.loadURL(b.url);
+    });
+    const fav = document.createElement('img');
+    fav.className = 'bookmark-menu__item--fav';
+    fav.alt = '';
+    fav.src = b.favicon || FALLBACK_FAV_URL;
+    fav.onerror = () => { fav.onerror = null; fav.src = FALLBACK_FAV_URL; };
+    item.insertBefore(fav, item.firstChild);
+    m.appendChild(item);
+  }
+}
+
+if (bookmarkOverflowBtn) {
+  bookmarkOverflowBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showOverflowDropdown();
+  });
+}
+
+async function toggleBookmarkBarMode() {
+  const mode = (currentSettings.ui && currentSettings.ui.showBookmarkBar) || 'always';
+  const next = (mode === 'always') ? 'never' : 'always';
+  const nextUi = { ...(currentSettings.ui || {}), showBookmarkBar: next };
+  await window.nooraniAPI.settings.update('ui', nextUi);
+}
+
+// Re-measure overflow on resize (debounced via rAF chain).
+let _bookmarkResizeScheduled = false;
+window.addEventListener('resize', () => {
+  if (_bookmarkResizeScheduled) return;
+  _bookmarkResizeScheduled = true;
+  requestAnimationFrame(() => {
+    _bookmarkResizeScheduled = false;
+    renderBookmarkBar();
+  });
+});
+
 // ============ Live data subscriptions ============
 
 const api = window.nooraniAPI;
@@ -804,7 +1070,9 @@ if (api && api.downloads) {
 }
 
 if (api && api.bookmarks && api.bookmarks.onChange) {
-  api.bookmarks.onChange(() => {
+  api.bookmarks.onChange((list) => {
+    bookmarkBarCache = Array.isArray(list) ? list : [];
+    renderBookmarkBar();
     syncStar();
     if (panelEl.dataset.current === 'bookmarks' && !panelEl.hidden) {
       renderBookmarksPanel();
@@ -824,6 +1092,7 @@ if (api && api.settings && api.settings.onChange) {
   api.settings.onChange((next) => {
     currentSettings = { ...currentSettings, ...next };
     applyTheme(next._effectiveTheme || next.theme);
+    updateBookmarkBarVisibility();
     // Note: engine / homepage updates apply to next actions;
     // we don't retroactively change current tabs' URLs.
   });
@@ -833,18 +1102,23 @@ if (api && api.settings && api.settings.onChange) {
 
 async function boot() {
   try {
-    const [settings, engines] = await Promise.all([
-      api ? api.settings.get()    : null,
-      api ? api.search.getEngines() : null
+    const [settings, engines, bookmarks] = await Promise.all([
+      api ? api.settings.get()      : null,
+      api ? api.search.getEngines() : null,
+      api ? api.bookmarks.get()     : []
     ]);
     if (engines) SEARCH_ENGINES = engines;
     if (settings) {
       currentSettings = settings;
       applyTheme(settings._effectiveTheme || settings.theme);
     }
+    bookmarkBarCache = Array.isArray(bookmarks) ? bookmarks : [];
   } catch (err) {
     console.error('[noorani] settings bootstrap failed:', err);
   }
+
+  renderBookmarkBar();
+  updateBookmarkBarVisibility();
 
   // First-run: open welcome instead of the homepage. Subsequent launches
   // take the normal path via getHomepage().

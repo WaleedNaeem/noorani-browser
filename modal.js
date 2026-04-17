@@ -145,6 +145,25 @@
     .noorani-modal__btn--danger:focus-visible {
       box-shadow: 0 0 0 2px var(--nm-danger);
     }
+
+    .noorani-modal__input {
+      display: block;
+      width: 100%;
+      font: inherit;
+      font-size: 14px;
+      padding: 10px 12px;
+      margin: 0 0 16px 0;
+      color: var(--nm-text);
+      background: transparent;
+      border: 1px solid var(--nm-border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .noorani-modal__input:focus {
+      border-color: var(--nm-accent);
+      box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.2);
+    }
   `;
 
   function injectStyle() {
@@ -276,5 +295,116 @@
     });
   }
 
-  window.nooraniModal = { confirm: confirmDialog };
+  // Prompt — same shell as confirm(), but with a text input between the
+  // message and the action buttons. Resolves to the trimmed string on
+  // confirm, or null on cancel (Escape, backdrop click, Cancel button).
+  function promptDialog(opts) {
+    opts = opts || {};
+    const title        = opts.title        || 'Edit';
+    const message      = opts.message      || '';
+    const confirmText  = opts.confirmText  || 'Save';
+    const cancelText   = opts.cancelText   || 'Cancel';
+    const placeholder  = opts.placeholder  || '';
+    const defaultValue = opts.defaultValue || '';
+
+    injectStyle();
+
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'noorani-modal__backdrop';
+      backdrop.setAttribute('role', 'dialog');
+      backdrop.setAttribute('aria-modal', 'true');
+
+      const card = document.createElement('div');
+      card.className = 'noorani-modal__card';
+
+      const h = document.createElement('h2');
+      h.className = 'noorani-modal__title';
+      h.textContent = title;
+      card.appendChild(h);
+
+      if (message) {
+        const m = document.createElement('p');
+        m.className = 'noorani-modal__message';
+        m.textContent = message;
+        card.appendChild(m);
+      }
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'noorani-modal__input';
+      input.value = defaultValue;
+      input.placeholder = placeholder;
+      input.spellcheck = false;
+      card.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'noorani-modal__actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'noorani-modal__btn noorani-modal__btn--cancel';
+      cancelBtn.textContent = cancelText;
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'noorani-modal__btn noorani-modal__btn--confirm';
+      confirmBtn.textContent = confirmText;
+
+      actions.append(cancelBtn, confirmBtn);
+      card.appendChild(actions);
+      backdrop.appendChild(card);
+
+      const prevFocus = document.activeElement;
+      let resolved = false;
+
+      function cleanup() {
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.classList.remove('is-open');
+        setTimeout(() => {
+          if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+          if (prevFocus && typeof prevFocus.focus === 'function') {
+            try { prevFocus.focus(); } catch (_) {}
+          }
+        }, 150);
+      }
+      function finish(value) {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(value);
+      }
+
+      cancelBtn.addEventListener('click', () => finish(null));
+      confirmBtn.addEventListener('click', () => finish(input.value.trim()));
+
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) finish(null);
+      });
+
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        } else if (e.key === 'Enter' && document.activeElement === input) {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(input.value.trim());
+        }
+      }
+      document.addEventListener('keydown', onKey, true);
+
+      document.body.appendChild(backdrop);
+      backdrop.offsetHeight;
+      backdrop.classList.add('is-open');
+
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    });
+  }
+
+  window.nooraniModal = {
+    confirm: confirmDialog,
+    prompt:  promptDialog
+  };
 })();

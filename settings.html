@@ -352,6 +352,22 @@
       </div>
     </section>
 
+    <!-- INTERFACE -->
+    <section class="section">
+      <h2>Interface</h2>
+      <div class="row">
+        <div class="row__label">Bookmark bar</div>
+        <div class="row__control">
+          <div class="checkboxes">
+            <label><input type="radio" name="bookmark-bar" value="always"> Always show</label>
+            <label><input type="radio" name="bookmark-bar" value="new-tab-only"> Only on new tab</label>
+            <label><input type="radio" name="bookmark-bar" value="never"> Never</label>
+          </div>
+          <div class="row__hint">Toggle quickly with Ctrl+Shift+B.</div>
+        </div>
+      </div>
+    </section>
+
     <!-- PRIVACY -->
     <section class="section">
       <h2>Clear Browsing Data</h2>
@@ -493,6 +509,31 @@
         homepageStatus.textContent = 'Saved.';
         setTimeout(() => { homepageStatus.textContent = ''; }, 2500);
       });
+
+      // ===== Interface / Bookmark bar =====
+      function syncBookmarkBarRadios(ui) {
+        const mode = (ui && ui.showBookmarkBar) || 'always';
+        document.querySelectorAll('input[name="bookmark-bar"]').forEach((r) => {
+          r.checked = (r.value === mode);
+        });
+      }
+      syncBookmarkBarRadios(settings.ui);
+      document.querySelectorAll('input[name="bookmark-bar"]').forEach((r) => {
+        r.addEventListener('change', () => {
+          if (!r.checked || !api) return;
+          const nextUi = { ...(settings.ui || {}), showBookmarkBar: r.value };
+          settings.ui = nextUi;
+          api.settings.update('ui', nextUi);
+        });
+      });
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          if (next && next.ui) {
+            settings.ui = next.ui;
+            syncBookmarkBarRadios(next.ui);
+          }
+        });
+      }
 
       // ===== Clear data =====
       const CLEAR_LABELS = {

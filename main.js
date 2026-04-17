@@ -11,7 +11,7 @@ let mainWindow = null;
 // Constants
 // ============================================================================
 
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 // Per-category feature defaults. When new keys are added later, they flow in
 // via the migration path in loadSettings() without wiping existing values.
@@ -54,6 +54,11 @@ const LOCATION_DEFAULTS = Object.freeze({
   lng:     null
 });
 
+const UI_DEFAULTS = Object.freeze({
+  showBookmarkBar: 'always'   // 'always' | 'new-tab-only' | 'never'
+});
+const BOOKMARK_BAR_MODES = Object.freeze(['always', 'new-tab-only', 'never']);
+
 const SETTINGS_DEFAULTS = Object.freeze({
   theme:              'light',                   // 'light' | 'dark' | 'auto'
   searchEngine:       'google',
@@ -62,7 +67,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   version:            SETTINGS_VERSION,
   onboarding:         ONBOARDING_DEFAULTS,
   location:           LOCATION_DEFAULTS,
-  features:           FEATURES_DEFAULTS
+  features:           FEATURES_DEFAULTS,
+  ui:                 UI_DEFAULTS
 });
 
 const SUPPORTED_LANGUAGES = Object.freeze(['en', 'ur', 'ar', 'id', 'tr', 'ms']);
@@ -142,7 +148,8 @@ function migrateSettings(raw) {
       privacy:       mergeCategory(FEATURES_DEFAULTS.privacy,       rawFeatures.privacy),
       interface:     mergeCategory(FEATURES_DEFAULTS.interface,     rawFeatures.interface)
     },
-    version: SETTINGS_VERSION
+    ui:       mergeCategory(UI_DEFAULTS, raw.ui),
+    version:  SETTINGS_VERSION
   };
 
   // Validation for the flat fields
@@ -156,6 +163,9 @@ function migrateSettings(raw) {
   }
   if (typeof merged.features.interface.rtl !== 'boolean') {
     merged.features.interface.rtl = FEATURES_DEFAULTS.interface.rtl;
+  }
+  if (!BOOKMARK_BAR_MODES.includes(merged.ui.showBookmarkBar)) {
+    merged.ui.showBookmarkBar = UI_DEFAULTS.showBookmarkBar;
   }
 
   return merged;
@@ -400,6 +410,18 @@ function registerIpc() {
     broadcastToAll('bookmarks:changed', list);
     return list;
   });
+  ipcMain.handle('bookmarks:update', (_e, payload) => {
+    if (!payload || !payload.url) return loadJSON('bookmarks.json', []);
+    const list = loadJSON('bookmarks.json', []);
+    const entry = list.find(b => b.url === payload.url);
+    if (!entry) return list;
+    if (typeof payload.title === 'string' && payload.title.trim()) {
+      entry.title = payload.title.trim();
+    }
+    saveJSON('bookmarks.json', list);
+    broadcastToAll('bookmarks:changed', list);
+    return list;
+  });
 
   // History -----------------------------------------------------------------
   ipcMain.handle('history:get', () => loadJSON('history.json', []));
@@ -570,7 +592,11 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
-        { label: 'Toggle DevTools', accelerator: 'CmdOrCtrl+Shift+I', role: 'toggleDevTools' }
+        { label: 'Toggle Bookmark Bar', accelerator: 'CmdOrCtrl+Shift+B',
+          click: () => sendShortcut('toggle-bookmark-bar') },
+        { type: 'separator' },
+        { label: 'Toggle DevTools',     accelerator: 'CmdOrCtrl+Shift+I',
+          role: 'toggleDevTools' }
       ]
     }
   ];

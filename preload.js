@@ -37,10 +37,11 @@ if (isTrusted) {
     },
 
     bookmarks: {
-      get:      ()      => invoke('bookmarks:get'),
-      has:      (url)   => invoke('bookmarks:has', url),
-      add:      (entry) => invoke('bookmarks:add', entry),
-      remove:   (url)   => invoke('bookmarks:remove', url),
+      get:      ()           => invoke('bookmarks:get'),
+      has:      (url)        => invoke('bookmarks:has', url),
+      add:      (entry)      => invoke('bookmarks:add', entry),
+      remove:   (url)        => invoke('bookmarks:remove', url),
+      update:   (url, title) => invoke('bookmarks:update', { url, title }),
       onChange: subscribe('bookmarks:changed')
     },
 
