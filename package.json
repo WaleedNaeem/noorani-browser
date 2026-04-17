@@ -1,20 +1,73 @@
 {
   "name": "noorani-browser",
   "productName": "Noorani Browser",
-  "version": "0.5.0",
-  "description": "A premium browser built for the Muslim community",
+  "version": "1.0.0-alpha",
+  "description": "A premium browser built for the Muslim community.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "generate-icon": "node tools/generate-icon.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "release": "electron-builder --publish always",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "Waleed Naeem <sheikh.waleed.naeem@gmail.com>",
+  "author": {
+    "name": "Waleed Naeem",
+    "email": "sheikh.waleed.naeem@gmail.com"
+  },
   "homepage": "https://nooraniBrowser.com",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^41.2.1"
+    "electron": "^41.2.1",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.noorani.browser",
+    "productName": "Noorani Browser",
+    "copyright": "Copyright © 2026 Waleed Naeem",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**/*",
+      "!tools/**/*",
+      "!.github/**/*",
+      "!**/*.md"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icons/icon.ico",
+      "artifactName": "Noorani-Browser-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Noorani Browser"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icons/icon.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "Noorani-Browser-${version}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "assets/icons/icon.png",
+      "category": "Network",
+      "artifactName": "Noorani-Browser-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "WaleedNaeem",
+      "repo": "noorani-browser"
+    }
   }
 }

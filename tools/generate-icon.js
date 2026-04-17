@@ -194,6 +194,37 @@ function makeSVG({ size, bg, fg }) {
 `;
 }
 
+// ---- ICO encoder (Windows icon container) -------------------------------
+// Modern ICO supports embedded PNG entries, so we don't need a BMP encoder
+// — just stitch the PNG bytes into the ICO's directory structure.
+function makeIco(entries) {
+  const n = entries.length;
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);  // reserved
+  header.writeUInt16LE(1, 2);  // type = 1 (ICO)
+  header.writeUInt16LE(n, 4);  // image count
+
+  const dir = Buffer.alloc(16 * n);
+  const datas = [];
+  let offset = 6 + 16 * n;
+
+  for (let i = 0; i < n; i++) {
+    const { size, png } = entries[i];
+    const d = dir.subarray(i * 16, (i + 1) * 16);
+    d[0] = size >= 256 ? 0 : size;   // width  (0 means 256)
+    d[1] = size >= 256 ? 0 : size;   // height (0 means 256)
+    d[2] = 0;                        // palette count
+    d[3] = 0;                        // reserved
+    d.writeUInt16LE(1,  4);          // colour planes
+    d.writeUInt16LE(32, 6);          // bits per pixel
+    d.writeUInt32LE(png.length, 8);  // image data size
+    d.writeUInt32LE(offset,    12);  // image data offset
+    datas.push(png);
+    offset += png.length;
+  }
+  return Buffer.concat([header, dir, ...datas]);
+}
+
 // ---- Generate + write ----------------------------------------------------
 const OUT = path.join(__dirname, '..', 'assets', 'icons');
 fs.mkdirSync(OUT, { recursive: true });
@@ -201,11 +232,36 @@ fs.mkdirSync(OUT, { recursive: true });
 const LIGHT = { bg: { r: 0xFA, g: 0xF7, b: 0xF2 }, fg: { r: 0xC9, g: 0xA9, b: 0x61 } };
 const DARK  = { bg: { r: 0x1A, g: 0x1A, b: 0x1A }, fg: { r: 0xD4, g: 0xAF, b: 0x37 } };
 
+// Light-variant sizes needed for: the Windows .ico (16..256), Linux 512+,
+// macOS high-res auto-conversion (1024).
+const ICO_SIZES = [16, 32, 48, 64, 128, 256];
+const EXTRA_SIZES = [512, 1024];
+const ALL_LIGHT_SIZES = [...new Set([...ICO_SIZES, ...EXTRA_SIZES])].sort((a, b) => a - b);
+
+const lightPngs = {};
+for (const size of ALL_LIGHT_SIZES) {
+  const png = makeIcon({ size, ...LIGHT });
+  lightPngs[size] = png;
+  fs.writeFileSync(path.join(OUT, `icon-${size}.png`), png);
+}
+
+// Dark variant at the 512/256/64 sizes we've historically shipped.
 for (const size of [512, 256, 64]) {
-  fs.writeFileSync(path.join(OUT, `icon-${size}.png`),      makeIcon({ size, ...LIGHT }));
   fs.writeFileSync(path.join(OUT, `icon-dark-${size}.png`), makeIcon({ size, ...DARK  }));
 }
+
+// SVG sources of truth.
 fs.writeFileSync(path.join(OUT, 'icon.svg'),      makeSVG({ size: 512, ...LIGHT }));
 fs.writeFileSync(path.join(OUT, 'icon-dark.svg'), makeSVG({ size: 512, ...DARK  }));
 
+// Canonical names the electron-builder config points to.
+fs.writeFileSync(path.join(OUT, 'icon.png'), lightPngs[1024]);   // 1024×1024 — mac + linux
+fs.writeFileSync(
+  path.join(OUT, 'icon.ico'),
+  makeIco(ICO_SIZES.map((s) => ({ size: s, png: lightPngs[s] })))
+);
+
 console.log('Wrote icons to', OUT);
+console.log(' · sizes:      ', ALL_LIGHT_SIZES.join(', '));
+console.log(' · icon.ico:   ', ICO_SIZES.join('+'), 'px');
+console.log(' · icon.png:   1024px (mac/linux source)');
