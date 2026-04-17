@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>New Tab</title>
+  <style>
+    :root {
+      --cream:      #faf7f2;
+      --cream-ink:  #3b3630;
+      --cream-mute: #8a7f62;
+      --gold:       #d4af37;
+      --gold-deep:  #8a6f2b;
+      --card-bg:    #fff;
+      --card-br:    #e4dcc5;
+      --hover:      #efe6cf;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: var(--cream);
+      color: var(--cream-ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12vh 24px 48px;
+    }
+
+    .wordmark {
+      font-size: 30px;
+      letter-spacing: 0.5px;
+      margin-bottom: 44px;
+      color: var(--cream-ink);
+    }
+    .wordmark .noorani {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      color: var(--gold-deep);
+    }
+    .wordmark .browser { font-weight: 400; }
+
+    .search {
+      width: 560px;
+      max-width: min(90vw, 720px);
+    }
+    .search input {
+      width: 100%;
+      height: 52px;
+      padding: 0 22px;
+      font-size: 16px;
+      color: var(--cream-ink);
+      background: var(--card-bg);
+      border: 1px solid var(--card-br);
+      border-radius: 30px;
+      outline: none;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .search input::placeholder { color: var(--cream-mute); }
+    .search input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.22);
+    }
+
+    .shortcuts {
+      margin-top: 48px;
+      display: grid;
+      grid-template-columns: repeat(3, 104px);
+      gap: 12px;
+    }
+    @media (min-width: 720px) {
+      .shortcuts { grid-template-columns: repeat(6, 104px); }
+    }
+
+    .shortcut {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 8px;
+      text-decoration: none;
+      color: inherit;
+      border-radius: 12px;
+      transition: background-color 120ms ease, transform 120ms ease;
+    }
+    .shortcut:hover {
+      background: var(--hover);
+      transform: translateY(-1px);
+    }
+    .shortcut img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      background: var(--card-bg);
+      padding: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .shortcut span {
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 96px;
+      color: var(--cream-ink);
+    }
+
+    .empty {
+      margin-top: 48px;
+      color: var(--cream-mute);
+      font-size: 13px;
+      max-width: 440px;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="wordmark">
+      <span class="noorani">Noorani</span>&nbsp;<span class="browser">Browser</span>
+    </div>
+
+    <form class="search"
+          action="https://www.google.com/search"
+          method="get"
+          autocomplete="off">
+      <input name="q" type="text" placeholder="Search with Noorani" autofocus />
+    </form>
+
+    <div id="shortcuts" class="shortcuts" hidden></div>
+    <div id="empty" class="empty" hidden>
+      Your shortcuts will appear here as you browse.
+    </div>
+  </div>
+
+  <!-- NOORANI_DATA -->
+
+  <script>
+    (function () {
+      const data      = (window.__NOORANI_TOP_SITES__ || []);
+      const container = document.getElementById('shortcuts');
+      const empty     = document.getElementById('empty');
+
+      if (!data.length) {
+        empty.hidden = false;
+        return;
+      }
+      container.hidden = false;
+
+      function hostLabel(url) {
+        try {
+          return new URL(url).hostname.replace(/^www\./, '');
+        } catch (_) { return url; }
+      }
+
+      const fallback = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
+        'fill="none" stroke="#8a7f62" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="12" r="10"/>' +
+        '<line x1="2" y1="12" x2="22" y2="12"/>' +
+        '<path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/>' +
+        '</svg>'
+      );
+
+      for (const site of data) {
+        const a   = document.createElement('a');
+        a.href    = site.url;
+        a.className = 'shortcut';
+
+        const img = document.createElement('img');
+        img.src  = site.favicon || fallback;
+        img.alt  = '';
+        img.onerror = function () {
+          this.onerror = null;
+          this.src = fallback;
+        };
+
+        const label = document.createElement('span');
+        label.textContent = site.title || hostLabel(site.url);
+
+        a.append(img, label);
+        container.appendChild(a);
+      }
+    })();
+  </script>
+</body>
+</html>

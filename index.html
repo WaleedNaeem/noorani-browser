@@ -2,11 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <!--
-    CSP locks the chrome (this document) only. <webview> guests run in their
-    own processes with their own CSPs. img-src allows http/https so favicons
-    from visited sites render in tab strips.
-  -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self';
@@ -28,6 +23,9 @@
       --border: #333333;
       --hover: #303030;
       --input-bg: #1a1a1a;
+      --panel-bg: #1f1f1f;
+      --panel-hover: #2a2a2a;
+      --panel-border: #2f2f2f;
     }
 
     * { box-sizing: border-box; }
@@ -70,99 +68,62 @@
       height: 36px;
       background: var(--tab-inactive);
       border-right: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 8px 0 10px;
-      gap: 8px;
-      cursor: default;
-      position: relative;
-      overflow: hidden;
+      display: flex; align-items: center;
+      padding: 0 8px 0 10px; gap: 8px;
+      cursor: default; position: relative; overflow: hidden;
     }
     .tab:hover { background: var(--tab-hover); }
-    .tab.active {
-      background: var(--tab-active);
-    }
+    .tab.active { background: var(--tab-active); }
     .tab.active::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 2px;
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
       background: var(--accent);
     }
-
     .tab__favicon {
-      width: 16px; height: 16px;
-      flex: 0 0 16px;
-      object-fit: contain;
-      border-radius: 2px;
+      width: 16px; height: 16px; flex: 0 0 16px;
+      object-fit: contain; border-radius: 2px;
     }
     .tab__title {
-      flex: 1 1 auto;
-      font-size: 12px;
-      line-height: 36px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      flex: 1 1 auto; font-size: 12px; line-height: 36px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       color: var(--text);
     }
     .tab__close {
-      flex: 0 0 18px;
-      width: 18px; height: 18px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      border: none;
-      border-radius: 3px;
-      color: var(--muted);
-      cursor: pointer;
-      padding: 0;
+      flex: 0 0 18px; width: 18px; height: 18px;
+      display: none; align-items: center; justify-content: center;
+      background: transparent; border: none; border-radius: 3px;
+      color: var(--muted); cursor: pointer; padding: 0;
     }
     .tab__close:hover { background: #444; color: #fff; }
     .tab:hover .tab__close,
     .tab.active .tab__close { display: inline-flex; }
-
-    /* Loading indicator pulse on favicon */
     .tab.loading .tab__favicon { opacity: 0.55; }
 
     .new-tab-btn {
-      flex: 0 0 36px;
-      width: 36px; height: 36px;
-      background: transparent;
-      border: none;
-      color: var(--text);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      line-height: 1;
+      flex: 0 0 36px; width: 36px; height: 36px;
+      background: transparent; border: none; color: var(--text);
+      cursor: pointer; display: inline-flex;
+      align-items: center; justify-content: center;
+      font-size: 20px; line-height: 1;
     }
     .new-tab-btn:hover { background: var(--tab-hover); color: var(--accent); }
 
     /* ============ TOOLBAR ============ */
     .toolbar {
-      flex: 0 0 48px;
-      height: 48px;
+      flex: 0 0 48px; height: 48px;
       background: var(--toolbar);
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 8px;
-      gap: 4px;
+      display: flex; align-items: center;
+      padding: 0 8px; gap: 4px;
       user-select: none;
     }
 
     .btn {
       width: 36px; height: 36px;
       display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      border: none;
-      color: var(--text);
-      border-radius: 6px;
-      cursor: pointer;
+      align-items: center; justify-content: center;
+      background: transparent; border: none; color: var(--text);
+      border-radius: 6px; cursor: pointer; position: relative;
       transition: background-color 120ms ease, color 120ms ease;
     }
     .btn:hover:not(:disabled) { background: var(--hover); }
@@ -170,22 +131,35 @@
     .btn:disabled { color: var(--muted); opacity: 0.4; cursor: default; }
     .btn svg { width: 18px; height: 18px; display: block; }
 
+    .btn.active-star { color: var(--accent); }
+    .btn.active-star svg { fill: var(--accent); stroke: var(--accent); }
+
+    .btn.panel-open { background: var(--hover); color: var(--accent); }
+
+    .dl-badge {
+      position: absolute;
+      top: 4px; right: 4px;
+      min-width: 14px; height: 14px;
+      padding: 0 3px;
+      background: var(--accent);
+      color: #1a1a1a;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 14px;
+      text-align: center;
+      pointer-events: none;
+    }
+    .dl-badge[hidden] { display: none; }
+
     .url-wrap {
-      flex: 1 1 auto;
-      display: flex;
-      align-items: center;
-      margin: 0 4px;
+      flex: 1 1 auto; display: flex; align-items: center; margin: 0 4px;
     }
     #url {
-      flex: 1 1 auto;
-      height: 36px;
-      padding: 0 12px;
-      background: var(--input-bg);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 13px;
-      outline: none;
+      flex: 1 1 auto; height: 36px; padding: 0 12px;
+      background: var(--input-bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px; outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease;
     }
     #url::placeholder { color: var(--muted); }
@@ -194,7 +168,14 @@
       box-shadow: 0 0 0 1px var(--accent);
     }
 
-    /* ============ CONTENT AREA (webview stack) ============ */
+    .tb-divider {
+      width: 1px; height: 22px;
+      background: var(--border);
+      margin: 0 2px;
+      flex: 0 0 1px;
+    }
+
+    /* ============ CONTENT AREA (webview stack + panel overlay) ============ */
     .content {
       flex: 1 1 auto;
       position: relative;
@@ -202,20 +183,167 @@
       overflow: hidden;
     }
     .content webview {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border: 0;
-      background: #ffffff;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      border: 0; background: #ffffff;
+      z-index: 1;
     }
     .content webview.hidden { display: none !important; }
+
+    /* ============ RIGHT-SIDE PANEL ============ */
+    .panel {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 360px;
+      background: var(--panel-bg);
+      border-left: 1px solid var(--panel-border);
+      color: var(--text);
+      display: flex; flex-direction: column;
+      z-index: 10;
+      box-shadow: -8px 0 24px rgba(0,0,0,0.35);
+    }
+    .panel[hidden] { display: none; }
+
+    .panel__header {
+      flex: 0 0 44px;
+      display: flex; align-items: center;
+      padding: 0 8px 0 14px;
+      border-bottom: 1px solid var(--panel-border);
+      gap: 8px;
+    }
+    .panel__title {
+      flex: 1; margin: 0;
+      font-size: 13px; font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .panel__clear {
+      font-size: 11px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    .panel__clear:hover { color: var(--text); border-color: var(--accent); }
+    .panel__close {
+      width: 28px; height: 28px;
+      background: transparent; border: none;
+      color: var(--text); border-radius: 4px;
+      cursor: pointer; font-size: 18px; line-height: 1;
+    }
+    .panel__close:hover { background: var(--panel-hover); }
+
+    .panel__body {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .panel__body::-webkit-scrollbar { width: 8px; }
+    .panel__body::-webkit-scrollbar-thumb {
+      background: #3a3a3a; border-radius: 4px;
+    }
+
+    .panel__section { display: none; padding: 0; }
+    .panel__section.active { display: block; }
+
+    .panel__section-header {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      padding: 12px 16px 6px;
+    }
+
+    .panel__empty {
+      padding: 32px 20px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .panel__search {
+      margin: 8px 12px 4px;
+      height: 32px;
+      width: calc(100% - 24px);
+      padding: 0 10px;
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 12px;
+      outline: none;
+    }
+    .panel__search:focus { border-color: var(--accent); }
+
+    .entry {
+      display: flex; align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      border: none; background: transparent;
+      color: var(--text);
+      width: 100%;
+      text-align: left;
+    }
+    .entry:hover { background: var(--panel-hover); }
+    .entry__favicon {
+      width: 16px; height: 16px; flex: 0 0 16px;
+      object-fit: contain; border-radius: 2px;
+    }
+    .entry__text {
+      flex: 1 1 auto; overflow: hidden; min-width: 0;
+    }
+    .entry__title {
+      font-size: 13px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .entry__url {
+      font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .entry__remove, .entry__action {
+      flex: 0 0 auto;
+      width: 24px; height: 24px;
+      background: transparent; border: none;
+      color: var(--muted); border-radius: 3px;
+      cursor: pointer; font-size: 14px;
+      display: none;
+      align-items: center; justify-content: center;
+    }
+    .entry:hover .entry__remove,
+    .entry:hover .entry__action { display: inline-flex; }
+    .entry__remove:hover, .entry__action:hover {
+      background: #444; color: #fff;
+    }
+    .entry__action {
+      width: auto;
+      padding: 0 8px;
+      font-size: 11px;
+      display: inline-flex !important;
+      color: var(--text);
+      border: 1px solid var(--border);
+      margin-left: 4px;
+    }
+    .entry__action:hover { border-color: var(--accent); }
+
+    .download-entry .progress {
+      margin-top: 4px;
+      height: 3px;
+      background: #2a2a2a;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .download-entry .progress__bar {
+      height: 100%;
+      background: var(--accent);
+      transition: width 180ms ease;
+    }
   </style>
 </head>
 <body>
-  <!-- Tab bar: #tabs is the flex+scroll container; the "+" button lives
-       inside it so it naturally sits right after the last tab and scrolls
-       along with the strip. -->
+  <!-- Tab bar -->
   <div class="tab-bar" role="tablist" aria-label="Browser tabs">
     <div class="tabs" id="tabs">
       <button class="new-tab-btn" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">+</button>
@@ -225,34 +353,86 @@
   <!-- Toolbar -->
   <div class="toolbar" role="toolbar" aria-label="Browser navigation">
     <button class="btn" id="back" title="Back (Alt+Left)" aria-label="Back" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="19" y1="12" x2="5" y2="12"></line>
         <polyline points="12 19 5 12 12 5"></polyline>
       </svg>
     </button>
     <button class="btn" id="forward" title="Forward (Alt+Right)" aria-label="Forward" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="5" y1="12" x2="19" y2="12"></line>
         <polyline points="12 5 19 12 12 19"></polyline>
       </svg>
     </button>
     <button class="btn" id="reload" title="Reload (Ctrl+R)" aria-label="Reload">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="23 4 23 10 17 10"></polyline>
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
       </svg>
     </button>
+    <button class="btn" id="home-btn" title="Home (Alt+Home)" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12l9-9 9 9"></path>
+        <path d="M5 10v10h14V10"></path>
+      </svg>
+    </button>
+
     <div class="url-wrap">
       <input id="url" type="text" spellcheck="false" autocomplete="off"
              placeholder="Search Google or enter a URL" />
     </div>
+
+    <button class="btn" id="star-btn" title="Bookmark this page" aria-label="Bookmark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+      </svg>
+    </button>
+    <div class="tb-divider"></div>
+    <button class="btn" id="bookmarks-btn" title="Bookmarks" aria-label="Bookmarks">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+      </svg>
+    </button>
+    <button class="btn" id="history-btn" title="History" aria-label="History">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1 4 1 10 7 10"></polyline>
+        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        <polyline points="12 7 12 12 15 14"></polyline>
+      </svg>
+    </button>
+    <button class="btn" id="downloads-btn" title="Downloads" aria-label="Downloads">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      <span class="dl-badge" id="dl-badge" hidden>0</span>
+    </button>
   </div>
 
-  <!-- Content area: all webviews stacked, only active is visible -->
-  <div class="content" id="content"></div>
+  <!-- Content area (webviews + panel overlay) -->
+  <div class="content" id="content">
+    <aside class="panel" id="panel" hidden>
+      <header class="panel__header">
+        <h2 class="panel__title" id="panel-title">Bookmarks</h2>
+        <button class="panel__clear" id="panel-clear" hidden>Clear history</button>
+        <button class="panel__close" id="panel-close" aria-label="Close panel">&times;</button>
+      </header>
+      <div class="panel__body">
+        <section class="panel__section" data-panel="bookmarks" id="section-bookmarks">
+          <div id="bookmarks-list"></div>
+        </section>
+        <section class="panel__section" data-panel="history" id="section-history">
+          <input class="panel__search" id="history-search" type="text"
+                 placeholder="Search history" autocomplete="off" spellcheck="false" />
+          <div id="history-list"></div>
+        </section>
+        <section class="panel__section" data-panel="downloads" id="section-downloads">
+          <div id="downloads-list"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
 
   <script src="renderer.js"></script>
 </body>

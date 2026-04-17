@@ -1,27 +1,38 @@
-// Noorani Browser — renderer.js (Phase 3: Tabs)
+// Noorani Browser — renderer.js (Phase 4: bookmarks/history/downloads/home)
 //
-// Runs in the host page's renderer process with contextIsolation=true and
-// nodeIntegration=false. Multi-tab model: many <webview> elements stacked in
-// #content; only the active one is visible. No IPC needed — the <webview> API
-// is enough for Phase 3.
+// Runs with contextIsolation=true, nodeIntegration=false.
+// All disk-touching operations go through window.nooraniAPI (see preload.js).
 
-// ------- DOM refs -------
-const tabsEl     = document.getElementById('tabs');
-const newTabBtn  = document.getElementById('new-tab');
-const contentEl  = document.getElementById('content');
-const urlInput   = document.getElementById('url');
-const backBtn    = document.getElementById('back');
-const forwardBtn = document.getElementById('forward');
-const reloadBtn  = document.getElementById('reload');
+// ------- DOM refs: toolbar / tabs --------
+const tabsEl        = document.getElementById('tabs');
+const newTabBtn     = document.getElementById('new-tab');
+const contentEl     = document.getElementById('content');
+const urlInput      = document.getElementById('url');
+const backBtn       = document.getElementById('back');
+const forwardBtn    = document.getElementById('forward');
+const reloadBtn     = document.getElementById('reload');
+const homeBtn       = document.getElementById('home-btn');
+const starBtn       = document.getElementById('star-btn');
+const bookmarksBtn  = document.getElementById('bookmarks-btn');
+const historyBtn    = document.getElementById('history-btn');
+const downloadsBtn  = document.getElementById('downloads-btn');
+const dlBadge       = document.getElementById('dl-badge');
 
-// ------- Constants -------
-const HOMEPAGE = 'https://www.google.com';
+// ------- DOM refs: panel --------
+const panelEl       = document.getElementById('panel');
+const panelTitle    = document.getElementById('panel-title');
+const panelClose    = document.getElementById('panel-close');
+const panelClear    = document.getElementById('panel-clear');
+const bookmarksList = document.getElementById('bookmarks-list');
+const historyList   = document.getElementById('history-list');
+const downloadsListEl = document.getElementById('downloads-list');
+const historySearch = document.getElementById('history-search');
 
-// Fallback favicon: inline SVG globe as a data URL. Shown before a site
-// reports a favicon, or when its favicon fails to load.
+// ------- Constants --------
+const HOMEPAGE = 'noorani://home';
+
 const FALLBACK_FAVICON =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
+  'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
     'fill="none" stroke="#9a9a9a" stroke-width="2" ' +
     'stroke-linecap="round" stroke-linejoin="round">' +
@@ -31,11 +42,18 @@ const FALLBACK_FAVICON =
     '</svg>'
   );
 
-// ------- State -------
-const tabs = [];        // ordered array of tab objects
+const PANEL_TITLES = {
+  bookmarks: 'Bookmarks',
+  history:   'History',
+  downloads: 'Downloads'
+};
+
+// ------- State --------
+const tabs = [];
 let currentTabId = null;
 let nextIdCounter = 1;
-const newId = () => 'tab-' + nextIdCounter++;
+const newId = () => 'tab-' + (nextIdCounter++);
+let downloadsState = [];
 
 function activeTab() {
   return tabs.find(t => t.id === currentTabId) || null;
@@ -47,7 +65,7 @@ function parseInput(raw) {
   const input = raw.trim();
   if (!input) return null;
 
-  if (/^(https?|file|about|data):/i.test(input)) return input;
+  if (/^(https?|file|about|data|noorani):/i.test(input)) return input;
   if (/^localhost(:\d+)?(\/|$)/i.test(input)) return 'http://' + input;
   if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)?/.test(input)) return 'http://' + input;
 
@@ -64,18 +82,48 @@ function navigate(raw) {
   if (target && tab) tab.webview.loadURL(target);
 }
 
+// Show internal URLs as blank in the URL bar (cleaner UX).
+function urlBarValueFor(url) {
+  if (!url || url.startsWith('noorani:')) return '';
+  return url;
+}
+
+// ============ Escape helper for innerHTML-free row rendering ============
+
+function el(tag, attrs, ...children) {
+  const n = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'className')      n.className = v;
+      else if (k === 'text')       n.textContent = v;
+      else if (k === 'onClick')    n.addEventListener('click', v);
+      else if (v === false || v == null) continue;
+      else if (v === true)         n.setAttribute(k, '');
+      else                         n.setAttribute(k, v);
+    }
+  }
+  for (const c of children) {
+    if (c == null || c === false) continue;
+    n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return n;
+}
+
+function hostLabel(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return url; }
+}
+
 // ============ Tab creation ============
 
 function createTab(url = HOMEPAGE) {
   const id = newId();
 
-  // --- Webview element ---
   const webview = document.createElement('webview');
   webview.setAttribute('src', url);
   webview.setAttribute('allowpopups', '');
-  webview.classList.add('hidden'); // reveal via switchToTab
+  webview.classList.add('hidden');
 
-  // --- Tab strip element ---
   const tabEl = document.createElement('div');
   tabEl.className = 'tab';
   tabEl.dataset.tabId = id;
@@ -101,19 +149,17 @@ function createTab(url = HOMEPAGE) {
     '<line x1="18" y1="6" x2="6" y2="18"/></svg>';
 
   tabEl.append(favEl, titleEl, closeEl);
-  // Insert before the "+" button so the button always sits at the tail.
   tabsEl.insertBefore(tabEl, newTabBtn);
 
-  contentEl.appendChild(webview);
+  contentEl.insertBefore(webview, panelEl);
 
   const tab = {
-    id,
-    webview,
-    tabEl, favEl, titleEl, closeEl,
-    title: null,        // null until page reports one
+    id, webview, tabEl, favEl, titleEl, closeEl,
+    title: null,
     url,
     favicon: null,
-    isLoading: true
+    isLoading: true,
+    _loggedUrl: null   // last URL we've committed to history
   };
   tabs.push(tab);
 
@@ -125,12 +171,10 @@ function createTab(url = HOMEPAGE) {
 // ============ Tab event wiring ============
 
 function wireTab(tab) {
-  // Strip: left-click to activate, middle-click to close, close-button to close
   tab.tabEl.addEventListener('mousedown', (e) => {
     if (e.button === 0 && !e.target.closest('.tab__close')) {
       switchToTab(tab.id);
     } else if (e.button === 1) {
-      // Middle-click closes the tab
       e.preventDefault();
       closeTab(tab.id);
     }
@@ -144,27 +188,34 @@ function wireTab(tab) {
 
   wv.addEventListener('did-navigate', (e) => {
     tab.url = e.url;
+    tab._loggedUrl = null;      // reset so the new URL can be logged once
+    tab.title = null;           // will be refilled by page-title-updated
+    tab.titleEl.textContent = hostLabel(e.url) || 'Loading…';
     if (tab.id === currentTabId) {
-      urlInput.value = e.url;
+      urlInput.value = urlBarValueFor(e.url);
       updateNavButtons();
+      syncStar();
     }
   });
 
   wv.addEventListener('did-navigate-in-page', (e) => {
-    // Only treat main-frame in-page navs as bar-updating
     if (e.isMainFrame === false) return;
     tab.url = e.url;
     if (tab.id === currentTabId) {
-      urlInput.value = e.url;
+      urlInput.value = urlBarValueFor(e.url);
       updateNavButtons();
+      syncStar();
     }
   });
 
   wv.addEventListener('page-title-updated', (e) => {
     tab.title = e.title || null;
-    tab.titleEl.textContent = tab.title || 'Untitled';
+    tab.titleEl.textContent = tab.title || hostLabel(tab.url) || 'Untitled';
     tab.tabEl.title = tab.title || '';
     if (tab.id === currentTabId) syncWindowTitle();
+
+    // Primary history commit — we have a title now.
+    maybeLogHistory(tab);
   });
 
   wv.addEventListener('page-favicon-updated', (e) => {
@@ -187,23 +238,34 @@ function wireTab(tab) {
     tab.isLoading = false;
     tab.tabEl.classList.remove('loading');
     if (tab.id === currentTabId) updateNavButtons();
+    // Backup history commit — for pages that never fired page-title-updated
+    // (e.g., raw PDFs, file downloads that land as navigations).
+    maybeLogHistory(tab);
   });
 
   wv.addEventListener('dom-ready', () => {
     if (tab.id === currentTabId) updateNavButtons();
   });
 
-  // Intercept window.open / target=_blank / middle-clicks-as-new-window and
-  // reroute to a new tab instead of letting Electron spawn a detached window.
-  // (Event is deprecated in newer Electron versions but still dispatched by
-  // the <webview> element; harmless if it no-ops.)
   wv.addEventListener('new-window', (e) => {
     try { e.preventDefault(); } catch (_) {}
     if (e.url) createTab(e.url);
   });
 }
 
-// ============ Tab switching / closing ============
+// Log each URL to history at most once per navigation.
+function maybeLogHistory(tab) {
+  if (!tab.url) return;
+  if (tab._loggedUrl === tab.url) return;
+  tab._loggedUrl = tab.url;
+  window.nooraniAPI.history.add({
+    url:     tab.url,
+    title:   tab.title || hostLabel(tab.url),
+    favicon: tab.favicon
+  });
+}
+
+// ============ Switching / closing ============
 
 function switchToTab(id) {
   const tab = tabs.find(t => t.id === id);
@@ -216,11 +278,10 @@ function switchToTab(id) {
   }
   currentTabId = id;
 
-  urlInput.value = tab.url || '';
+  urlInput.value = urlBarValueFor(tab.url);
   syncWindowTitle();
   updateNavButtons();
-
-  // Make sure the active tab is visible in the tab strip
+  syncStar();
   tab.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -233,46 +294,65 @@ function closeTab(id) {
   tab.tabEl.remove();
   tabs.splice(idx, 1);
 
-  // Decision: closing the last tab closes the window (Chrome-style).
   if (tabs.length === 0) {
     window.close();
     return;
   }
 
   if (currentTabId === id) {
-    // Activate the tab that took this slot; fall back to the last tab.
     const newIdx = Math.min(idx, tabs.length - 1);
     switchToTab(tabs[newIdx].id);
   }
 }
 
-// ============ Toolbar / title sync ============
+// ============ Toolbar / title ============
 
 function updateNavButtons() {
   const tab = activeTab();
   if (!tab) {
-    backBtn.disabled = true;
-    forwardBtn.disabled = true;
+    backBtn.disabled = true; forwardBtn.disabled = true;
     return;
   }
-  // canGoBack/canGoForward throw before guest webContents attach.
   try {
     backBtn.disabled    = !tab.webview.canGoBack();
     forwardBtn.disabled = !tab.webview.canGoForward();
   } catch (_) {
-    backBtn.disabled = true;
-    forwardBtn.disabled = true;
+    backBtn.disabled = true; forwardBtn.disabled = true;
   }
 }
 
 function syncWindowTitle() {
   const tab = activeTab();
-  document.title = (tab && tab.title)
+  if (!tab) { document.title = 'Noorani Browser'; return; }
+  // Internal pages: show just the app name, not "New Tab - Noorani Browser"
+  if (tab.url && tab.url.startsWith('noorani:')) {
+    document.title = 'Noorani Browser';
+    return;
+  }
+  document.title = tab.title
     ? `${tab.title} - Noorani Browser`
     : 'Noorani Browser';
 }
 
-// ============ Toolbar wiring ============
+async function syncStar() {
+  const tab = activeTab();
+  const url = tab && tab.url;
+  const bookmarkable = !!url && !url.startsWith('noorani:') && !url.startsWith('about:');
+  starBtn.disabled = !bookmarkable;
+
+  if (!bookmarkable) {
+    starBtn.classList.remove('active-star');
+    starBtn.title = 'Bookmark this page';
+    return;
+  }
+  try {
+    const has = await window.nooraniAPI.bookmarks.has(url);
+    starBtn.classList.toggle('active-star', has);
+    starBtn.title = has ? 'Remove bookmark' : 'Bookmark this page';
+  } catch (_) { /* swallow */ }
+}
+
+// ============ URL bar / nav buttons ============
 
 urlInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
@@ -281,7 +361,6 @@ urlInput.addEventListener('keydown', (e) => {
     urlInput.blur();
   }
 });
-
 backBtn.addEventListener('click', () => {
   const tab = activeTab();
   if (tab && tab.webview.canGoBack()) tab.webview.goBack();
@@ -294,13 +373,11 @@ reloadBtn.addEventListener('click', () => {
   const tab = activeTab();
   if (tab) tab.webview.reload();
 });
-
 newTabBtn.addEventListener('click', () => {
   createTab();
-  // Focus URL bar so the user can type immediately.
-  urlInput.focus();
-  urlInput.select();
+  focusURLBar();
 });
+homeBtn.addEventListener('click', () => goHome());
 
 // ============ Shortcut action helpers ============
 
@@ -309,8 +386,6 @@ function focusURLBar() {
   urlInput.select();
 }
 
-// Ctrl+W policy: never let the window become empty. If the active tab is
-// the only tab, open a fresh HOMEPAGE tab first, then close the old one.
 function closeActiveTab() {
   const tab = activeTab();
   if (!tab) return;
@@ -328,56 +403,335 @@ function cycleTab(delta) {
   const next = ((idx + delta) % tabs.length + tabs.length) % tabs.length;
   switchToTab(tabs[next].id);
 }
-
-function switchToIndex(oneBased) {
-  const tab = tabs[oneBased - 1];
-  if (tab) switchToTab(tab.id);
+function switchToIndex(n) {
+  const t = tabs[n - 1];
+  if (t) switchToTab(t.id);
 }
-
-function backActive() {
-  const tab = activeTab();
-  if (tab && tab.webview.canGoBack()) tab.webview.goBack();
-}
-
-function forwardActive() {
-  const tab = activeTab();
-  if (tab && tab.webview.canGoForward()) tab.webview.goForward();
-}
-
-function reloadActive() {
-  const tab = activeTab();
-  if (tab) tab.webview.reload();
-}
-
-// ============ IPC shortcut subscription ============
-//
-// Keyboard shortcuts come from main.js menu accelerators via IPC. This works
-// even when a <webview> has focus (the renderer-level keydown handler used
-// in Phase 3 couldn't catch those). See preload.js for the bridge.
+function backActive()    { const t = activeTab(); if (t && t.webview.canGoBack())    t.webview.goBack(); }
+function forwardActive() { const t = activeTab(); if (t && t.webview.canGoForward()) t.webview.goForward(); }
+function reloadActive()  { const t = activeTab(); if (t) t.webview.reload(); }
+function goHome()        { const t = activeTab(); if (t) t.webview.loadURL(HOMEPAGE); }
 
 if (window.nooraniAPI && typeof window.nooraniAPI.onShortcut === 'function') {
   window.nooraniAPI.onShortcut((action, ...args) => {
     switch (action) {
-      case 'new-tab':
-        createTab();
-        focusURLBar();
-        break;
-      case 'close-tab':
-        closeActiveTab();
-        break;
-      case 'next-tab':     cycleTab(+1); break;
-      case 'prev-tab':     cycleTab(-1); break;
-      case 'switch-tab':   switchToIndex(args[0]); break;
-      case 'back':         backActive(); break;
-      case 'forward':      forwardActive(); break;
-      case 'reload':       reloadActive(); break;
-      case 'focus-url':    focusURLBar(); break;
+      case 'new-tab':    createTab(); focusURLBar(); break;
+      case 'close-tab':  closeActiveTab(); break;
+      case 'next-tab':   cycleTab(+1); break;
+      case 'prev-tab':   cycleTab(-1); break;
+      case 'switch-tab': switchToIndex(args[0]); break;
+      case 'back':       backActive(); break;
+      case 'forward':    forwardActive(); break;
+      case 'reload':     reloadActive(); break;
+      case 'focus-url':  focusURLBar(); break;
+      case 'home':       goHome(); break;
     }
   });
+}
+
+// ============ Bookmark toggle (star) ============
+
+starBtn.addEventListener('click', async () => {
+  const tab = activeTab();
+  if (!tab || !tab.url) return;
+  if (tab.url.startsWith('noorani:') || tab.url.startsWith('about:')) return;
+
+  const has = await window.nooraniAPI.bookmarks.has(tab.url);
+  if (has) {
+    await window.nooraniAPI.bookmarks.remove(tab.url);
+  } else {
+    await window.nooraniAPI.bookmarks.add({
+      url:     tab.url,
+      title:   tab.title || hostLabel(tab.url),
+      favicon: tab.favicon
+    });
+  }
+  await syncStar();
+  if (panelEl.dataset.current === 'bookmarks' && !panelEl.hidden) {
+    renderBookmarksPanel();
+  }
+});
+
+// ============ Side panel (bookmarks / history / downloads) ============
+
+function openPanel(which) {
+  if (panelEl.dataset.current === which && !panelEl.hidden) {
+    closePanel();
+    return;
+  }
+  panelEl.hidden = false;
+  panelEl.dataset.current = which;
+  panelTitle.textContent = PANEL_TITLES[which] || '';
+  for (const s of panelEl.querySelectorAll('.panel__section')) {
+    s.classList.toggle('active', s.dataset.panel === which);
+  }
+  panelClear.hidden = which !== 'history';
+  for (const [name, btn] of [
+    ['bookmarks', bookmarksBtn],
+    ['history',   historyBtn],
+    ['downloads', downloadsBtn]
+  ]) {
+    btn.classList.toggle('panel-open', name === which);
+  }
+
+  if (which === 'bookmarks') renderBookmarksPanel();
+  if (which === 'history')   renderHistoryPanel();
+  if (which === 'downloads') renderDownloadsPanel();
+}
+
+function closePanel() {
+  panelEl.hidden = true;
+  delete panelEl.dataset.current;
+  for (const btn of [bookmarksBtn, historyBtn, downloadsBtn]) {
+    btn.classList.remove('panel-open');
+  }
+}
+
+bookmarksBtn.addEventListener('click', () => openPanel('bookmarks'));
+historyBtn.addEventListener  ('click', () => openPanel('history'));
+downloadsBtn.addEventListener('click', () => openPanel('downloads'));
+panelClose.addEventListener  ('click', closePanel);
+
+panelClear.addEventListener('click', async () => {
+  if (!confirm('Clear all browsing history? This cannot be undone.')) return;
+  await window.nooraniAPI.history.clear();
+  renderHistoryPanel();
+});
+
+// Esc closes the panel
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !panelEl.hidden) closePanel();
+});
+
+// ============ Bookmarks panel ============
+
+async function renderBookmarksPanel() {
+  const bookmarks = await window.nooraniAPI.bookmarks.get();
+  bookmarksList.textContent = '';
+  if (!bookmarks.length) {
+    bookmarksList.appendChild(
+      el('div', { className: 'panel__empty' },
+        'No bookmarks yet. Click the star to save one.'));
+    return;
+  }
+  for (const b of bookmarks) {
+    bookmarksList.appendChild(renderEntryRow({
+      favicon: b.favicon,
+      title:   b.title || hostLabel(b.url),
+      url:     b.url,
+      onOpen:  (ev) => openFromEntry(b.url, ev),
+      actions: [{
+        label: '×',
+        title: 'Remove bookmark',
+        onClick: async () => {
+          await window.nooraniAPI.bookmarks.remove(b.url);
+          renderBookmarksPanel();
+          syncStar();
+        }
+      }]
+    }));
+  }
+}
+
+// ============ History panel ============
+
+let _historyFilter = '';
+
+async function renderHistoryPanel() {
+  const all = await window.nooraniAPI.history.get();
+  // Newest first — history.json appends in chronological order.
+  const sorted = all.slice().reverse();
+  const q = _historyFilter.toLowerCase().trim();
+  const filtered = q
+    ? sorted.filter(h =>
+        (h.title || '').toLowerCase().includes(q) ||
+        (h.url   || '').toLowerCase().includes(q))
+    : sorted;
+
+  historyList.textContent = '';
+
+  if (!filtered.length) {
+    historyList.appendChild(
+      el('div', { className: 'panel__empty' },
+        q ? 'No history matches your search.' : 'No browsing history yet.'));
+    return;
+  }
+
+  const now = new Date();
+  const startOfToday = new Date(now); startOfToday.setHours(0,0,0,0);
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+
+  const groups = { today: [], yesterday: [], older: [] };
+  for (const h of filtered) {
+    const t = h.visitedAt || 0;
+    if (t >= startOfToday.getTime())     groups.today.push(h);
+    else if (t >= startOfYesterday.getTime()) groups.yesterday.push(h);
+    else                                  groups.older.push(h);
+  }
+
+  const sections = [
+    ['Today',     groups.today],
+    ['Yesterday', groups.yesterday],
+    ['Older',     groups.older]
+  ];
+  for (const [label, items] of sections) {
+    if (!items.length) continue;
+    historyList.appendChild(
+      el('div', { className: 'panel__section-header', text: label }));
+    for (const h of items) {
+      historyList.appendChild(renderEntryRow({
+        favicon: h.favicon,
+        title:   h.title || hostLabel(h.url),
+        url:     h.url,
+        onOpen:  (ev) => openFromEntry(h.url, ev)
+      }));
+    }
+  }
+}
+
+historySearch.addEventListener('input', () => {
+  _historyFilter = historySearch.value;
+  renderHistoryPanel();
+});
+
+// ============ Downloads panel ============
+
+function renderDownloadsPanel() {
+  downloadsListEl.textContent = '';
+  if (!downloadsState.length) {
+    downloadsListEl.appendChild(
+      el('div', { className: 'panel__empty' },
+        'No downloads this session.'));
+    return;
+  }
+  for (const d of downloadsState) {
+    const pct = Math.round((d.progress || 0) * 100);
+    const isActive = (d.state === 'progressing' || d.state === 'started');
+    const stateLabel =
+      d.state === 'completed'   ? 'Completed' :
+      d.state === 'cancelled'   ? 'Cancelled' :
+      d.state === 'interrupted' ? 'Failed' :
+                                  pct + '%';
+
+    const text = el('div', { className: 'entry__text' },
+      el('div', { className: 'entry__title', text: d.filename || '(unnamed)' }),
+      el('div', { className: 'entry__url',   text: stateLabel }),
+      isActive
+        ? el('div', { className: 'progress' },
+            el('div', { className: 'progress__bar', style: `width: ${pct}%` }))
+        : null
+    );
+    // "style" via attribute didn't apply via our el helper — apply directly:
+    const bar = text.querySelector('.progress__bar');
+    if (bar) bar.style.width = pct + '%';
+
+    const row = el('div', { className: 'entry download-entry' }, text);
+
+    if (d.state === 'completed') {
+      row.appendChild(el('button', {
+        className: 'entry__action',
+        title: 'Open file',
+        onClick: () => window.nooraniAPI.downloads.openFile(d.id)
+      }, 'Open'));
+      row.appendChild(el('button', {
+        className: 'entry__action',
+        title: 'Show in folder',
+        onClick: () => window.nooraniAPI.downloads.openFolder(d.id)
+      }, 'Folder'));
+    } else if (isActive) {
+      row.appendChild(el('button', {
+        className: 'entry__action',
+        onClick: () => window.nooraniAPI.downloads.cancel(d.id)
+      }, 'Cancel'));
+    }
+
+    downloadsListEl.appendChild(row);
+  }
+}
+
+function updateDownloadsBadge() {
+  const active = downloadsState.filter(
+    d => d.state === 'progressing' || d.state === 'started'
+  ).length;
+  if (active > 0) {
+    dlBadge.hidden = false;
+    dlBadge.textContent = String(active);
+  } else {
+    dlBadge.hidden = true;
+  }
+}
+
+if (window.nooraniAPI && window.nooraniAPI.downloads) {
+  window.nooraniAPI.downloads.onUpdate((list) => {
+    downloadsState = list;
+    updateDownloadsBadge();
+    if (panelEl.dataset.current === 'downloads' && !panelEl.hidden) {
+      renderDownloadsPanel();
+    }
+  });
+  // Pull initial state (empty until a download starts this session)
+  window.nooraniAPI.downloads.get().then((list) => {
+    downloadsState = list || [];
+    updateDownloadsBadge();
+  });
+}
+
+// ============ Shared entry-row renderer ============
+
+function renderEntryRow({ favicon, title, url, onOpen, actions }) {
+  const row = el('button', {
+    className: 'entry',
+    type: 'button',
+    onClick: (e) => {
+      if (e.target.closest('.entry__remove') ||
+          e.target.closest('.entry__action')) return;
+      onOpen && onOpen(e);
+    }
+  });
+
+  const fav = el('img', {
+    className: 'entry__favicon',
+    src: favicon || FALLBACK_FAVICON,
+    alt: ''
+  });
+  fav.onerror = () => { fav.onerror = null; fav.src = FALLBACK_FAVICON; };
+
+  const text = el('div', { className: 'entry__text' },
+    el('div', { className: 'entry__title', text: title }),
+    el('div', { className: 'entry__url',   text: url })
+  );
+
+  row.append(fav, text);
+
+  if (actions && actions.length) {
+    for (const a of actions) {
+      row.appendChild(el('button', {
+        className: 'entry__remove',
+        title: a.title || '',
+        type: 'button',
+        onClick: (e) => {
+          e.stopPropagation();
+          a.onClick && a.onClick();
+        }
+      }, a.label));
+    }
+  }
+  return row;
+}
+
+// Open a URL (from bookmark/history/shortcut).
+// Ctrl/Meta+click → open in a new tab. Otherwise → active tab.
+function openFromEntry(url, event) {
+  if (event && (event.ctrlKey || event.metaKey)) {
+    createTab(url);
+  } else {
+    const tab = activeTab();
+    if (tab) tab.webview.loadURL(url);
+    closePanel();
+  }
 }
 
 // ============ Startup ============
 
 createTab(HOMEPAGE);
-urlInput.focus();
-urlInput.select();
+focusURLBar();
