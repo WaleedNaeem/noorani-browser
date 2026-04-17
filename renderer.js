@@ -1102,22 +1102,29 @@ if (api && api.settings && api.settings.onChange) {
 
 async function boot() {
   try {
-    const [settings, engines, bookmarks] = await Promise.all([
+    const [settings, engines] = await Promise.all([
       api ? api.settings.get()      : null,
-      api ? api.search.getEngines() : null,
-      api ? api.bookmarks.get()     : []
+      api ? api.search.getEngines() : null
     ]);
     if (engines) SEARCH_ENGINES = engines;
     if (settings) {
       currentSettings = settings;
       applyTheme(settings._effectiveTheme || settings.theme);
     }
-    bookmarkBarCache = Array.isArray(bookmarks) ? bookmarks : [];
   } catch (err) {
     console.error('[noorani] settings bootstrap failed:', err);
   }
 
-  renderBookmarkBar();
+  // Bookmarks load independently so any failure here doesn't knock out
+  // the rest of the chrome.
+  if (api && api.bookmarks) {
+    api.bookmarks.get().then((list) => {
+      bookmarkBarCache = Array.isArray(list) ? list : [];
+      renderBookmarkBar();
+    }).catch((err) => {
+      console.error('[noorani] bookmarks load failed:', err);
+    });
+  }
   updateBookmarkBarVisibility();
 
   // First-run: open welcome instead of the homepage. Subsequent launches
