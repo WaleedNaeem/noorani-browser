@@ -46,7 +46,7 @@
       --panel-border:     #e8e2d5;
       --input-bg:         #ffffff;
       --tab-hover:        #e8e2d5;
-      --tab-bar-bg:       #faf7f2;
+      --tab-bar-bg:       #ffffff;
       --webview-bg:       #ffffff;
       --scrollbar-thumb:  #cfc4a8;
     }
@@ -68,7 +68,7 @@
       --panel-border:     #2f2f2f;
       --input-bg:         #1a1a1a;
       --tab-hover:        #2d2d2d;
-      --tab-bar-bg:       #1a1a1a;
+      --tab-bar-bg:       #252525;
       --webview-bg:       #1a1a1a;
       --scrollbar-thumb:  #3a3a3a;
     }
@@ -97,12 +97,14 @@
     body { display: flex; flex-direction: column; }
 
     /* ============ TAB BAR ============ */
+    /* Tab bar and toolbar share a background so there's no visible seam
+       between them; the bottom border on the toolbar is what separates
+       chrome from content area. */
     .tab-bar {
       flex: 0 0 38px;
       height: 38px;
       background: var(--tab-bar-bg);
       display: flex; align-items: flex-end;
-      border-bottom: 1px solid var(--border);
       user-select: none;
       padding: 0 4px;
     }
@@ -126,18 +128,23 @@
       padding: 0 6px 0 12px; gap: 8px;
       cursor: default; position: relative; overflow: hidden;
       color: var(--muted);
-      transform-origin: bottom center;
-      animation: tab-in 150ms ease-out;
+      animation: tab-in 180ms ease-out;
       transition: background-color 150ms ease, color 150ms ease,
-                  opacity 150ms ease, transform 150ms ease;
+                  max-width 150ms ease-out, min-width 150ms ease-out,
+                  padding 150ms ease-out, opacity 150ms ease-out;
     }
+    /* Width sweeps from 0 to the final flex basis — the rest of the row
+       reflows naturally. */
     @keyframes tab-in {
-      from { opacity: 0; transform: translateY(6px) scale(0.98); }
-      to   { opacity: 1; transform: translateY(0)  scale(1); }
+      from { opacity: 0; max-width: 0;     min-width: 0;     padding-left: 0;    padding-right: 0; }
+      to   { opacity: 1; max-width: 200px; min-width: 100px; padding-left: 12px; padding-right: 6px; }
     }
+    /* Close collapses the same dimensions back to 0, then the node is
+       removed from the DOM by the renderer. */
     .tab.is-leaving {
       opacity: 0;
-      transform: translateY(-4px) scale(0.97);
+      max-width: 0; min-width: 0;
+      padding-left: 0; padding-right: 0;
       pointer-events: none;
     }
     .tab:hover { background: var(--tab-hover); color: var(--text); }
@@ -232,16 +239,18 @@
       flex: 1 1 auto; display: flex; align-items: center; margin: 0 4px;
     }
     #url {
-      flex: 1 1 auto; height: 36px; padding: 0 12px;
+      flex: 1 1 auto; height: 36px; padding: 0 14px;
       background: var(--input-bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 6px;
-      font-size: 13px; outline: none;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      outline: none;
+      transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
     }
     #url::placeholder { color: var(--muted); }
     #url:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent);
+      box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.2);
     }
 
     .tb-divider {
@@ -263,8 +272,14 @@
       width: 100%; height: 100%;
       border: 0; background: var(--webview-bg);
       z-index: 1;
+      opacity: 1;
+      transition: opacity 120ms ease-out;
     }
     .content webview.hidden { display: none !important; }
+    /* Briefly set by the renderer on the newly-active webview so it fades
+       in instead of snapping. The outgoing webview just goes display:none
+       (no fade) to avoid overlap. */
+    .content webview.is-entering { opacity: 0; }
 
     /* Horizontal loading progress bar — sits just under the toolbar. */
     .loading-bar {
@@ -299,11 +314,11 @@
       display: flex; flex-direction: column;
       z-index: 10;
       box-shadow: -8px 0 24px rgba(0,0,0,0.2);
-      animation: panel-slide-in 220ms cubic-bezier(0.2, 0.8, 0.3, 1);
+      animation: panel-slide-in 200ms ease-out;
     }
     .panel[hidden] { display: none; }
     @keyframes panel-slide-in {
-      from { transform: translateX(24px); opacity: 0; }
+      from { transform: translateX(20px); opacity: 0; }
       to   { transform: translateX(0);    opacity: 1; }
     }
 

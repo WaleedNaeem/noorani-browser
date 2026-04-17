@@ -364,6 +364,12 @@ function switchToTab(id) {
     t.webview.classList.toggle('hidden', !isActive);
     t.tabEl.classList.toggle('active', isActive);
   }
+  // Gentle fade-in on the new webview so fast tab switching feels fluid.
+  // The outgoing tab hid instantly above — no visible overlap.
+  tab.webview.classList.add('is-entering');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => tab.webview.classList.remove('is-entering'));
+  });
   currentTabId = id;
 
   urlInput.value = urlBarValueFor(tab.url);
@@ -386,7 +392,7 @@ function closeTab(id) {
   // Animate the tab chrome element out, then remove from DOM.
   const node = tab.tabEl;
   node.classList.add('is-leaving');
-  setTimeout(() => { if (node.parentNode) node.remove(); }, 180);
+  setTimeout(() => { if (node.parentNode) node.remove(); }, 170);
 
   if (tabs.length === 0) {
     window.close();
