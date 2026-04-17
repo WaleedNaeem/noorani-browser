@@ -164,6 +164,32 @@
       border-color: var(--nm-accent);
       box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.2);
     }
+
+    .noorani-modal__field {
+      margin: 0 0 14px 0;
+    }
+    .noorani-modal__field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--nm-muted);
+      margin: 0 0 6px 2px;
+    }
+    .noorani-modal__field .noorani-modal__input { margin: 0; }
+    .noorani-modal__field.has-error .noorani-modal__input {
+      border-color: var(--nm-danger);
+    }
+    .noorani-modal__field-error {
+      display: none;
+      font-size: 12px;
+      color: var(--nm-danger);
+      margin-top: 5px;
+    }
+    .noorani-modal__field.has-error .noorani-modal__field-error {
+      display: block;
+    }
   `;
 
   function injectStyle() {
@@ -403,8 +429,176 @@
     });
   }
 
+  // Multi-field form modal. Resolves to an object { [key]: trimmedValue }
+  // on save, or null on cancel. Each field may provide a validate(value)
+  // that returns an error string or null. Validation runs on save; if any
+  // field errors, the modal stays open and highlights the offender(s).
+  //
+  //   const result = await nooraniModal.form({
+  //     title: 'Edit Bookmark',
+  //     fields: [
+  //       { key: 'title', label: 'Title', value: entry.title },
+  //       { key: 'url',   label: 'URL',   value: entry.url, type: 'url',
+  //         validate: (v) => /^(https?|noorani):\/\//i.test(v) ? null : 'Enter a valid URL' }
+  //     ],
+  //     confirmText: 'Save'
+  //   });
+  function formDialog(opts) {
+    opts = opts || {};
+    const title       = opts.title       || 'Edit';
+    const message     = opts.message     || '';
+    const fields      = Array.isArray(opts.fields) ? opts.fields : [];
+    const confirmText = opts.confirmText || 'Save';
+    const cancelText  = opts.cancelText  || 'Cancel';
+
+    injectStyle();
+
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'noorani-modal__backdrop';
+      backdrop.setAttribute('role', 'dialog');
+      backdrop.setAttribute('aria-modal', 'true');
+
+      const card = document.createElement('div');
+      card.className = 'noorani-modal__card';
+
+      const h = document.createElement('h2');
+      h.className = 'noorani-modal__title';
+      h.textContent = title;
+      card.appendChild(h);
+
+      if (message) {
+        const m = document.createElement('p');
+        m.className = 'noorani-modal__message';
+        m.textContent = message;
+        card.appendChild(m);
+      }
+
+      const inputs = [];
+      for (const f of fields) {
+        if (!f || !f.key) continue;
+        const wrap = document.createElement('div');
+        wrap.className = 'noorani-modal__field';
+
+        const label = document.createElement('label');
+        label.className = 'noorani-modal__field-label';
+        label.textContent = f.label || f.key;
+        wrap.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = f.type || 'text';
+        input.className = 'noorani-modal__input';
+        input.value = (f.value != null) ? f.value : '';
+        if (f.placeholder) input.placeholder = f.placeholder;
+        input.spellcheck = false;
+        wrap.appendChild(input);
+
+        const err = document.createElement('div');
+        err.className = 'noorani-modal__field-error';
+        wrap.appendChild(err);
+
+        card.appendChild(wrap);
+        inputs.push({ field: f, input, wrap, err });
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'noorani-modal__actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'noorani-modal__btn noorani-modal__btn--cancel';
+      cancelBtn.textContent = cancelText;
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'noorani-modal__btn noorani-modal__btn--confirm';
+      confirmBtn.textContent = confirmText;
+
+      actions.append(cancelBtn, confirmBtn);
+      card.appendChild(actions);
+      backdrop.appendChild(card);
+
+      const prevFocus = document.activeElement;
+      let resolved = false;
+
+      function cleanup() {
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.classList.remove('is-open');
+        setTimeout(() => {
+          if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+          if (prevFocus && typeof prevFocus.focus === 'function') {
+            try { prevFocus.focus(); } catch (_) {}
+          }
+        }, 150);
+      }
+      function finish(value) {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(value);
+      }
+      function attemptSave() {
+        const values = {};
+        let firstError = null;
+        for (const { field, input, wrap, err } of inputs) {
+          const v = (input.value || '').trim();
+          values[field.key] = v;
+          let errText = null;
+          if (typeof field.validate === 'function') errText = field.validate(v);
+          if (errText) {
+            wrap.classList.add('has-error');
+            err.textContent = errText;
+            if (!firstError) firstError = input;
+          } else {
+            wrap.classList.remove('has-error');
+            err.textContent = '';
+          }
+        }
+        if (firstError) { firstError.focus(); firstError.select(); return; }
+        finish(values);
+      }
+
+      cancelBtn.addEventListener('click', () => finish(null));
+      confirmBtn.addEventListener('click', attemptSave);
+
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) finish(null);
+      });
+
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        } else if (e.key === 'Enter' &&
+                   inputs.some(({ input }) => document.activeElement === input)) {
+          e.preventDefault();
+          attemptSave();
+        }
+      }
+      document.addEventListener('keydown', onKey, true);
+
+      // Live-clear error styling as the user types.
+      for (const { input, wrap, err } of inputs) {
+        input.addEventListener('input', () => {
+          wrap.classList.remove('has-error');
+          err.textContent = '';
+        });
+      }
+
+      document.body.appendChild(backdrop);
+      backdrop.offsetHeight;
+      backdrop.classList.add('is-open');
+
+      setTimeout(() => {
+        if (inputs[0]) { inputs[0].input.focus(); inputs[0].input.select(); }
+      }, 0);
+    });
+  }
+
   window.nooraniModal = {
     confirm: confirmDialog,
-    prompt:  promptDialog
+    prompt:  promptDialog,
+    form:    formDialog
   };
 })();

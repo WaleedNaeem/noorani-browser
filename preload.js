@@ -37,11 +37,17 @@ if (isTrusted) {
     },
 
     bookmarks: {
-      get:      ()           => invoke('bookmarks:get'),
-      has:      (url)        => invoke('bookmarks:has', url),
-      add:      (entry)      => invoke('bookmarks:add', entry),
-      remove:   (url)        => invoke('bookmarks:remove', url),
-      update:   (url, title) => invoke('bookmarks:update', { url, title }),
+      get:      ()      => invoke('bookmarks:get'),
+      has:      (url)   => invoke('bookmarks:has', url),
+      add:      (entry) => invoke('bookmarks:add', entry),
+      remove:   (url)   => invoke('bookmarks:remove', url),
+      // changes: { title?, newUrl? }  — or a plain string for legacy title-only updates.
+      update:   (url, changes) => {
+        const c = (typeof changes === 'string')
+          ? { title: changes }
+          : (changes || {});
+        return invoke('bookmarks:update', { url, ...c });
+      },
       onChange: subscribe('bookmarks:changed')
     },
 

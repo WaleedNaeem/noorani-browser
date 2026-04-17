@@ -272,6 +272,10 @@ function wireTab(tab) {
       closeTab(tab.id);
     }
   });
+  tab.tabEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showTabContextMenu(tab.id, e.clientX, e.clientY);
+  });
   tab.closeEl.addEventListener('click', (e) => {
     e.stopPropagation();
     closeTab(tab.id);
@@ -345,6 +349,22 @@ function wireTab(tab) {
   wv.addEventListener('new-window', (e) => {
     try { e.preventDefault(); } catch (_) {}
     if (e.url) createTab(e.url);
+  });
+
+  // Right-click inside the guest page. params.x/y are CSS pixels relative
+  // to the webview's content area; we add the webview's viewport offset
+  // so the custom menu shows under the actual cursor.
+  wv.addEventListener('context-menu', (e) => {
+    try { e.preventDefault(); } catch (_) {}
+    const params = e.params || {};
+    const rect = wv.getBoundingClientRect();
+    const items = buildWebviewContextMenu(tab, params);
+    if (!items.length) return;
+    window.nooraniContextMenu.show({
+      x: rect.left + (params.x || 0),
+      y: rect.top  + (params.y || 0),
+      items
+    });
   });
 }
 
@@ -799,7 +819,6 @@ let bookmarkBarCache     = [];
 let bookmarkBarFirst     = true;
 let bookmarkBarKnownUrls = new Set();
 let bookmarkBarOverflow  = [];   // bookmarks that didn't fit on the bar
-let openBookmarkMenu     = null; // floating menu element currently shown, if any
 
 function truncate(str, n) {
   if (!str) return '';
@@ -921,85 +940,54 @@ function renderBookmarkBar() {
   });
 }
 
-// Close whatever floating menu is open (overflow dropdown or context).
-function closeBookmarkMenu() {
-  if (!openBookmarkMenu) return;
-  const m = openBookmarkMenu;
-  openBookmarkMenu = null;
-  m.classList.remove('is-open');
-  setTimeout(() => { if (m.parentNode) m.remove(); }, 140);
-  document.removeEventListener('mousedown', onOutsideMenuClick, true);
-  document.removeEventListener('keydown',   onMenuEscape,        true);
-}
-function onOutsideMenuClick(e) {
-  if (openBookmarkMenu && !openBookmarkMenu.contains(e.target)) closeBookmarkMenu();
-}
-function onMenuEscape(e) {
-  if (e.key === 'Escape') { e.preventDefault(); closeBookmarkMenu(); }
-}
-
-function openFloatingMenu(x, y) {
-  closeBookmarkMenu();
-  const m = document.createElement('div');
-  m.className = 'bookmark-menu';
-  document.body.appendChild(m);
-  openBookmarkMenu = m;
-
-  // Position after it's in the DOM so we can measure.
-  requestAnimationFrame(() => {
-    const rect = m.getBoundingClientRect();
-    let left = x;
-    let top  = y;
-    if (left + rect.width  > window.innerWidth  - 8) left = window.innerWidth  - rect.width  - 8;
-    if (top  + rect.height > window.innerHeight - 8) top  = window.innerHeight - rect.height - 8;
-    m.style.left = Math.max(8, left) + 'px';
-    m.style.top  = Math.max(8, top)  + 'px';
-    m.classList.add('is-open');
-  });
-
-  document.addEventListener('mousedown', onOutsideMenuClick, true);
-  document.addEventListener('keydown',   onMenuEscape,        true);
-  return m;
-}
-
-function menuItem(label, onClick, opts) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'bookmark-menu__item';
-  if (opts && opts.danger) btn.classList.add('is-danger');
-  btn.textContent = label;
-  btn.addEventListener('click', () => {
-    closeBookmarkMenu();
-    onClick();
-  });
-  return btn;
-}
-
 function showBookmarkContextMenu(bookmark, _node, x, y) {
-  const m = openFloatingMenu(x, y);
-  m.appendChild(menuItem('Open',                () => {
-    const tab = activeTab();
-    if (tab) tab.webview.loadURL(bookmark.url);
-  }));
-  m.appendChild(menuItem('Open in new tab',     () => createTab(bookmark.url)));
-  m.appendChild(menuItem('Edit…',               () => editBookmark(bookmark)));
-  const sep = document.createElement('div'); sep.className = 'bookmark-menu__sep';
-  m.appendChild(sep);
-  m.appendChild(menuItem('Delete',              () => deleteBookmark(bookmark.url), { danger: true }));
+  window.nooraniContextMenu.show({
+    x, y,
+    items: [
+      { label: 'Open',            action: () => {
+        const tab = activeTab();
+        if (tab) tab.webview.loadURL(bookmark.url);
+      }},
+      { label: 'Open in New Tab', action: () => createTab(bookmark.url) },
+      { divider: true },
+      { label: 'Edit…',           action: () => editBookmark(bookmark) },
+      { label: 'Delete',          action: () => deleteBookmark(bookmark.url) }
+    ]
+  });
 }
 
 async function editBookmark(bookmark) {
-  const next = await window.nooraniModal.prompt({
-    title:        'Edit Bookmark',
-    message:      'Change the display title for this bookmark.',
-    defaultValue: bookmark.title || '',
-    placeholder:  'Bookmark title',
-    confirmText:  'Save'
+  const result = await window.nooraniModal.form({
+    title:   'Edit Bookmark',
+    fields: [
+      {
+        key:         'title',
+        label:       'Title',
+        value:       bookmark.title || '',
+        placeholder: 'Bookmark title'
+      },
+      {
+        key:         'url',
+        label:       'URL',
+        value:       bookmark.url || '',
+        type:        'url',
+        placeholder: 'https://example.com',
+        validate:    (v) => /^(https?|noorani):\/\/\S+/i.test(v)
+                              ? null
+                              : 'Please enter a valid URL'
+      }
+    ],
+    confirmText: 'Save'
   });
-  if (next === null) return;
-  const title = next.trim();
-  if (!title || title === bookmark.title) return;
-  await window.nooraniAPI.bookmarks.update(bookmark.url, title);
+  if (!result) return;
+
+  const changes = {};
+  const nextTitle = (result.title || '').trim();
+  const nextUrl   = (result.url   || '').trim();
+  if (nextTitle && nextTitle !== bookmark.title) changes.title  = nextTitle;
+  if (nextUrl   && nextUrl   !== bookmark.url)   changes.newUrl = nextUrl;
+  if (Object.keys(changes).length === 0) return;
+  await window.nooraniAPI.bookmarks.update(bookmark.url, changes);
 }
 
 async function deleteBookmark(url) {
@@ -1009,21 +997,19 @@ async function deleteBookmark(url) {
 function showOverflowDropdown() {
   if (bookmarkBarOverflow.length === 0) return;
   const rect = bookmarkOverflowBtn.getBoundingClientRect();
-  const m = openFloatingMenu(rect.right - 200, rect.bottom + 4);
-  m.style.minWidth = '220px';
-  for (const b of bookmarkBarOverflow) {
-    const item = menuItem(truncate(b.title || hostLabel(b.url) || b.url, 36), () => {
+  const items = bookmarkBarOverflow.map((b) => ({
+    label: truncate(b.title || hostLabel(b.url) || b.url, 36),
+    icon:  `<img src="${b.favicon || FALLBACK_FAV_URL}" alt="" width="16" height="16" style="border-radius:2px;object-fit:contain">`,
+    action: () => {
       const tab = activeTab();
       if (tab) tab.webview.loadURL(b.url);
-    });
-    const fav = document.createElement('img');
-    fav.className = 'bookmark-menu__item--fav';
-    fav.alt = '';
-    fav.src = b.favicon || FALLBACK_FAV_URL;
-    fav.onerror = () => { fav.onerror = null; fav.src = FALLBACK_FAV_URL; };
-    item.insertBefore(fav, item.firstChild);
-    m.appendChild(item);
-  }
+    }
+  }));
+  window.nooraniContextMenu.show({
+    x: rect.right - 220,
+    y: rect.bottom + 4,
+    items
+  });
 }
 
 if (bookmarkOverflowBtn) {
@@ -1039,6 +1025,204 @@ async function toggleBookmarkBarMode() {
   const nextUi = { ...(currentSettings.ui || {}), showBookmarkBar: next };
   await window.nooraniAPI.settings.update('ui', nextUi);
 }
+
+// ============ Webview context menu ============
+
+function buildWebviewContextMenu(tab, params) {
+  const items = [];
+  const wv = tab.webview;
+
+  // Link
+  if (params.linkURL) {
+    const href = params.linkURL;
+    items.push({ label: 'Open Link',             action: () => wv.loadURL(href) });
+    items.push({ label: 'Open Link in New Tab',  action: () => createTab(href) });
+    items.push({ divider: true });
+    items.push({ label: 'Copy Link Address',     action: () => {
+      navigator.clipboard.writeText(href).catch(() => {});
+    }});
+    items.push({ label: 'Save Link As…',         action: () => {
+      try { wv.downloadURL(href); } catch (_) {}
+    }});
+    items.push({ divider: true });
+  }
+
+  // Image / video / audio
+  if ((params.mediaType === 'image' || params.hasImageContents) && params.srcURL) {
+    const src = params.srcURL;
+    items.push({ label: 'Open Image in New Tab', action: () => createTab(src) });
+    items.push({ label: 'Save Image As…',        action: () => {
+      try { wv.downloadURL(src); } catch (_) {}
+    }});
+    items.push({ label: 'Copy Image',            action: () => {
+      try { wv.copyImageAt(params.x, params.y); } catch (_) {}
+    }});
+    items.push({ label: 'Copy Image Address',    action: () => {
+      navigator.clipboard.writeText(src).catch(() => {});
+    }});
+    items.push({ divider: true });
+  }
+
+  // Selection
+  const selection = (params.selectionText || '').trim();
+  if (selection) {
+    const engineKey  = currentSettings.searchEngine || 'google';
+    const engine     = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google ||
+                       { name: 'Google', search: 'https://www.google.com/search?q=' };
+    const engineName = engine.name || 'Google';
+    items.push({ label: 'Copy', action: () => { try { wv.copy(); } catch (_) {} } });
+    items.push({ divider: true });
+    items.push({
+      label: `Search "${truncate(selection, 30)}" with ${engineName}`,
+      action: () => createTab(engine.search + encodeURIComponent(selection))
+    });
+    items.push({ divider: true });
+  }
+
+  // Editable field (input, textarea, contenteditable)
+  if (params.isEditable) {
+    const ef = params.editFlags || {};
+    items.push({ label: 'Cut',        disabled: !ef.canCut,       action: () => { try { wv.cut();    } catch (_) {} } });
+    items.push({ label: 'Copy',       disabled: !ef.canCopy,      action: () => { try { wv.copy();   } catch (_) {} } });
+    items.push({ label: 'Paste',      disabled: !ef.canPaste,     action: () => { try { wv.paste();  } catch (_) {} } });
+    items.push({ label: 'Select All', disabled: !ef.canSelectAll, action: () => { try { wv.selectAll(); } catch (_) {} } });
+    items.push({ divider: true });
+  }
+
+  // Always available
+  let canBack = false, canFwd = false;
+  try { canBack = wv.canGoBack(); canFwd = wv.canGoForward(); } catch (_) {}
+  items.push({ label: 'Back',    disabled: !canBack, action: () => { try { wv.goBack();    } catch (_) {} } });
+  items.push({ label: 'Forward', disabled: !canFwd,  action: () => { try { wv.goForward(); } catch (_) {} } });
+  items.push({ label: 'Reload', action: () => { try { wv.reload(); } catch (_) {} } });
+  items.push({ divider: true });
+  items.push({
+    label: 'View Page Source',
+    action: () => createTab('view-source:' + (params.pageURL || tab.url))
+  });
+  items.push({
+    label: 'Inspect Element',
+    action: () => {
+      try { wv.inspectElement(params.x | 0, params.y | 0); }
+      catch (_) {
+        try { wv.openDevTools(); } catch (__) {}
+      }
+    }
+  });
+
+  // Trim any leading / trailing divider leftovers.
+  while (items.length && items[0].divider)               items.shift();
+  while (items.length && items[items.length - 1].divider) items.pop();
+  return items;
+}
+
+// ============ Tab / URL-bar helpers (for context menus) ============
+
+function duplicateTab(id) {
+  const tab = tabs.find(t => t.id === id);
+  if (tab) createTab(tab.url);
+}
+function closeOtherTabs(keepId) {
+  const others = tabs.filter(t => t.id !== keepId).map(t => t.id);
+  for (const id of others) closeTab(id);
+}
+function closeTabsToRight(fromId) {
+  const idx = tabs.findIndex(t => t.id === fromId);
+  if (idx < 0) return;
+  const toClose = tabs.slice(idx + 1).map(t => t.id);
+  for (const id of toClose) closeTab(id);
+}
+function reloadTabById(id) {
+  const tab = tabs.find(t => t.id === id);
+  if (tab) tab.webview.reload();
+}
+
+function showTabContextMenu(tabId, x, y) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx < 0) return;
+  const toRightCount = tabs.length - idx - 1;
+  const otherCount   = tabs.length - 1;
+  window.nooraniContextMenu.show({
+    x, y,
+    items: [
+      { label: 'Reload Tab',      action: () => reloadTabById(tabId) },
+      { label: 'Duplicate Tab',   action: () => duplicateTab(tabId) },
+      { divider: true },
+      { label: 'Close Tab',       action: () => closeTab(tabId) },
+      { label: `Close ${otherCount} Other Tab${otherCount === 1 ? '' : 's'}`,
+        disabled: otherCount === 0,
+        action: () => closeOtherTabs(tabId) },
+      { label: `Close ${toRightCount} Tab${toRightCount === 1 ? '' : 's'} to the Right`,
+        disabled: toRightCount === 0,
+        action: () => closeTabsToRight(tabId) }
+    ]
+  });
+}
+
+function hasSelection(input) {
+  return input.selectionStart != null &&
+         input.selectionEnd   != null &&
+         input.selectionStart !== input.selectionEnd;
+}
+function deleteSelection(input) {
+  const s = input.selectionStart, e = input.selectionEnd;
+  if (s == null || s === e) return;
+  input.value = input.value.slice(0, s) + input.value.slice(e);
+  input.selectionStart = input.selectionEnd = s;
+}
+
+function showUrlBarContextMenu(x, y) {
+  const sel = hasSelection(urlInput);
+  const hasVal = urlInput.value.length > 0;
+  window.nooraniContextMenu.show({
+    x, y,
+    items: [
+      { label: 'Cut',           disabled: !sel,    action: () => {
+        urlInput.focus();
+        try { document.execCommand('cut'); } catch (_) {}
+      }},
+      { label: 'Copy',          disabled: !sel,    action: () => {
+        const s = urlInput.selectionStart, e = urlInput.selectionEnd;
+        const text = urlInput.value.slice(s, e);
+        if (text) navigator.clipboard.writeText(text).catch(() => {});
+      }},
+      { label: 'Paste',         action: async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          urlInput.focus();
+          const s = urlInput.selectionStart || 0;
+          const e = urlInput.selectionEnd   || 0;
+          urlInput.value = urlInput.value.slice(0, s) + text + urlInput.value.slice(e);
+          urlInput.selectionStart = urlInput.selectionEnd = s + text.length;
+        } catch (_) {}
+      }},
+      { label: 'Paste and Go',  action: async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) navigate(text.trim());
+        } catch (_) {}
+      }},
+      { divider: true },
+      { label: 'Select All',    disabled: !hasVal, action: () => {
+        urlInput.focus(); urlInput.select();
+      }},
+      { label: 'Delete',        disabled: !sel,    action: () => {
+        deleteSelection(urlInput);
+      }}
+    ]
+  });
+}
+
+urlInput.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  showUrlBarContextMenu(e.clientX, e.clientY);
+});
+
+// Global fallback: kill the built-in browser context menu on the chrome.
+// Specific handlers (URL bar, tabs, bookmarks, webview) have already
+// fired by the time this listener runs; webview events fire inside the
+// guest and are preventDefault()'d there separately.
+document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // Re-measure overflow on resize (debounced via rAF chain).
 let _bookmarkResizeScheduled = false;

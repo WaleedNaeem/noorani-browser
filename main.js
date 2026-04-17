@@ -410,14 +410,30 @@ function registerIpc() {
     broadcastToAll('bookmarks:changed', list);
     return list;
   });
+  // Supports renaming the title AND changing the URL. Changing the URL
+  // clears the favicon so the new origin re-fetches one on next visit.
+  // Refuses the URL change if another bookmark already uses the new URL.
   ipcMain.handle('bookmarks:update', (_e, payload) => {
     if (!payload || !payload.url) return loadJSON('bookmarks.json', []);
     const list = loadJSON('bookmarks.json', []);
-    const entry = list.find(b => b.url === payload.url);
-    if (!entry) return list;
+    const idx = list.findIndex(b => b.url === payload.url);
+    if (idx < 0) return list;
+    const entry = list[idx];
+
     if (typeof payload.title === 'string' && payload.title.trim()) {
       entry.title = payload.title.trim();
     }
+    if (typeof payload.newUrl === 'string' && payload.newUrl.trim()) {
+      const newUrl = payload.newUrl.trim();
+      if (newUrl !== entry.url) {
+        const dup = list.findIndex((b, i) => i !== idx && b.url === newUrl);
+        if (dup < 0) {
+          entry.url = newUrl;
+          entry.favicon = null;
+        }
+      }
+    }
+
     saveJSON('bookmarks.json', list);
     broadcastToAll('bookmarks:changed', list);
     return list;
