@@ -33,6 +33,17 @@
       --ncm-hover:    #2d2d2d;
     }
 
+    /* Invisible full-viewport overlay that sits just below the menu.
+       Needed because the chrome's document mousedown/contextmenu listeners
+       do NOT receive events that land inside a <webview> — the webview
+       captures them. The shield catches those clicks and hides the menu. */
+    .noorani-ctxmenu__shield {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: transparent;
+      cursor: default;
+    }
     .noorani-ctxmenu {
       position: fixed;
       z-index: 100000;
@@ -119,11 +130,14 @@
     const m = currentMenu;
     currentMenu = null;
     if (m._dismissers) {
-      document.removeEventListener('mousedown',   m._dismissers.onDown, true);
-      document.removeEventListener('contextmenu', m._dismissers.onDown, true);
-      document.removeEventListener('keydown',     m._dismissers.onKey,  true);
-      window.removeEventListener('blur',          m._dismissers.onBlur);
-      window.removeEventListener('resize',        m._dismissers.onBlur);
+      document.removeEventListener('keydown', m._dismissers.onKey, true);
+      window.removeEventListener('blur',      m._dismissers.onBlur);
+      window.removeEventListener('resize',    m._dismissers.onBlur);
+    }
+    // Remove the shield immediately so it doesn't block clicks while the
+    // menu animates out.
+    if (m._shield && m._shield.parentNode) {
+      m._shield.parentNode.removeChild(m._shield);
     }
     m.classList.remove('is-open');
     setTimeout(() => { if (m.parentNode) m.parentNode.removeChild(m); }, 120);
@@ -181,8 +195,18 @@
       menu.appendChild(btn);
     }
 
+    // Put a transparent shield over the entire viewport (behind the menu
+     // but above the webview) so ANY click outside the menu — including
+     // clicks that land inside a <webview> — hides the menu.
+    const shield = document.createElement('div');
+    shield.className = 'noorani-ctxmenu__shield';
+    shield.addEventListener('mousedown',   (e) => { e.preventDefault(); hide(); });
+    shield.addEventListener('contextmenu', (e) => { e.preventDefault(); hide(); });
+    document.body.appendChild(shield);
+
     document.body.appendChild(menu);
     currentMenu = menu;
+    menu._shield = shield;
 
     // Position after layout so we can measure and flip against edges.
     requestAnimationFrame(() => {
@@ -200,22 +224,16 @@
       menu.classList.add('is-open');
     });
 
-    // Dismiss handlers — attach after the triggering event has finished.
-    const onDown = (e) => {
-      if (!menu.contains(e.target)) hide();
-    };
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); hide(); }
     };
     const onBlur = () => hide();
     setTimeout(() => {
-      document.addEventListener('mousedown',   onDown, true);
-      document.addEventListener('contextmenu', onDown, true);
-      document.addEventListener('keydown',     onKey,  true);
-      window.addEventListener('blur',          onBlur);
-      window.addEventListener('resize',        onBlur);
+      document.addEventListener('keydown', onKey, true);
+      window.addEventListener('blur',      onBlur);
+      window.addEventListener('resize',    onBlur);
     }, 0);
-    menu._dismissers = { onDown, onKey, onBlur };
+    menu._dismissers = { onKey, onBlur };
   }
 
   window.nooraniContextMenu = { show, hide };

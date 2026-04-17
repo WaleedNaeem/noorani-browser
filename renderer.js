@@ -351,18 +351,20 @@ function wireTab(tab) {
     if (e.url) createTab(e.url);
   });
 
-  // Right-click inside the guest page. params.x/y are CSS pixels relative
-  // to the webview's content area; we add the webview's viewport offset
-  // so the custom menu shows under the actual cursor.
+  // Right-click inside the guest page. In this Electron build, params.x/y
+  // for the webview's context-menu event are already reported in chrome-
+  // window viewport coordinates (not webview-local). Earlier versions of
+  // this code added webview.getBoundingClientRect() on top, which dropped
+  // the menu 100–200px below the cursor — exactly rect.top's worth of
+  // extra offset. Use params coords directly.
   wv.addEventListener('context-menu', (e) => {
     try { e.preventDefault(); } catch (_) {}
     const params = e.params || {};
-    const rect = wv.getBoundingClientRect();
     const items = buildWebviewContextMenu(tab, params);
     if (!items.length) return;
     window.nooraniContextMenu.show({
-      x: rect.left + (params.x || 0),
-      y: rect.top  + (params.y || 0),
+      x: params.x || 0,
+      y: params.y || 0,
       items
     });
   });
@@ -384,6 +386,8 @@ function maybeLogHistory(tab) {
 function switchToTab(id) {
   const tab = tabs.find(t => t.id === id);
   if (!tab) return;
+  // Hide any open context menu — stale context from the previous tab.
+  if (window.nooraniContextMenu) window.nooraniContextMenu.hide();
   for (const t of tabs) {
     const isActive = (t.id === id);
     t.webview.classList.toggle('hidden', !isActive);
@@ -1031,47 +1035,52 @@ async function toggleBookmarkBarMode() {
 function buildWebviewContextMenu(tab, params) {
   const items = [];
   const wv = tab.webview;
+  const ef = params.editFlags || {};
+  const selection = (params.selectionText || '').trim();
 
-  // Link
+  // --- Top: navigation (always present) ---
+  let canBack = false, canFwd = false;
+  try { canBack = wv.canGoBack(); canFwd = wv.canGoForward(); } catch (_) {}
+  items.push({ label: 'Back',    disabled: !canBack,
+    action: () => { try { wv.goBack();    } catch (_) {} } });
+  items.push({ label: 'Forward', disabled: !canFwd,
+    action: () => { try { wv.goForward(); } catch (_) {} } });
+  items.push({ label: 'Reload',
+    action: () => { try { wv.reload(); } catch (_) {} } });
+  items.push({ divider: true });
+
+  // --- Context-specific: link ---
   if (params.linkURL) {
     const href = params.linkURL;
-    items.push({ label: 'Open Link',             action: () => wv.loadURL(href) });
-    items.push({ label: 'Open Link in New Tab',  action: () => createTab(href) });
+    items.push({ label: 'Open Link',            action: () => wv.loadURL(href) });
+    items.push({ label: 'Open Link in New Tab', action: () => createTab(href) });
     items.push({ divider: true });
-    items.push({ label: 'Copy Link Address',     action: () => {
-      navigator.clipboard.writeText(href).catch(() => {});
-    }});
-    items.push({ label: 'Save Link As…',         action: () => {
-      try { wv.downloadURL(href); } catch (_) {}
-    }});
+    items.push({ label: 'Copy Link Address',
+      action: () => navigator.clipboard.writeText(href).catch(() => {}) });
+    items.push({ label: 'Save Link As…',
+      action: () => { try { wv.downloadURL(href); } catch (_) {} } });
     items.push({ divider: true });
   }
 
-  // Image / video / audio
+  // --- Context-specific: image ---
   if ((params.mediaType === 'image' || params.hasImageContents) && params.srcURL) {
     const src = params.srcURL;
     items.push({ label: 'Open Image in New Tab', action: () => createTab(src) });
-    items.push({ label: 'Save Image As…',        action: () => {
-      try { wv.downloadURL(src); } catch (_) {}
-    }});
-    items.push({ label: 'Copy Image',            action: () => {
-      try { wv.copyImageAt(params.x, params.y); } catch (_) {}
-    }});
-    items.push({ label: 'Copy Image Address',    action: () => {
-      navigator.clipboard.writeText(src).catch(() => {});
-    }});
+    items.push({ label: 'Save Image As…',
+      action: () => { try { wv.downloadURL(src); } catch (_) {} } });
+    items.push({ label: 'Copy Image',
+      action: () => { try { wv.copyImageAt(params.x, params.y); } catch (_) {} } });
+    items.push({ label: 'Copy Image Address',
+      action: () => navigator.clipboard.writeText(src).catch(() => {}) });
     items.push({ divider: true });
   }
 
-  // Selection
-  const selection = (params.selectionText || '').trim();
+  // --- Context-specific: selection search ---
   if (selection) {
     const engineKey  = currentSettings.searchEngine || 'google';
     const engine     = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google ||
                        { name: 'Google', search: 'https://www.google.com/search?q=' };
     const engineName = engine.name || 'Google';
-    items.push({ label: 'Copy', action: () => { try { wv.copy(); } catch (_) {} } });
-    items.push({ divider: true });
     items.push({
       label: `Search "${truncate(selection, 30)}" with ${engineName}`,
       action: () => createTab(engine.search + encodeURIComponent(selection))
@@ -1079,23 +1088,34 @@ function buildWebviewContextMenu(tab, params) {
     items.push({ divider: true });
   }
 
-  // Editable field (input, textarea, contenteditable)
-  if (params.isEditable) {
-    const ef = params.editFlags || {};
-    items.push({ label: 'Cut',        disabled: !ef.canCut,       action: () => { try { wv.cut();    } catch (_) {} } });
-    items.push({ label: 'Copy',       disabled: !ef.canCopy,      action: () => { try { wv.copy();   } catch (_) {} } });
-    items.push({ label: 'Paste',      disabled: !ef.canPaste,     action: () => { try { wv.paste();  } catch (_) {} } });
-    items.push({ label: 'Select All', disabled: !ef.canSelectAll, action: () => { try { wv.selectAll(); } catch (_) {} } });
-    items.push({ divider: true });
+  // --- Editing actions ---
+  // Visibility rules (per spec):
+  //   Cut:    only if the element is editable AND there's a selection
+  //   Copy:   only if there's a selection (works on non-editable text too)
+  //   Paste:  only if the element is editable
+  //   Select All: always shown
+  if (params.isEditable && selection) {
+    items.push({ label: 'Cut',
+      action: () => { try { wv.cut(); } catch (_) {} } });
   }
-
-  // Always available
-  let canBack = false, canFwd = false;
-  try { canBack = wv.canGoBack(); canFwd = wv.canGoForward(); } catch (_) {}
-  items.push({ label: 'Back',    disabled: !canBack, action: () => { try { wv.goBack();    } catch (_) {} } });
-  items.push({ label: 'Forward', disabled: !canFwd,  action: () => { try { wv.goForward(); } catch (_) {} } });
-  items.push({ label: 'Reload', action: () => { try { wv.reload(); } catch (_) {} } });
+  if (selection) {
+    items.push({ label: 'Copy',
+      action: () => { try { wv.copy(); } catch (_) {} } });
+  }
+  if (params.isEditable) {
+    items.push({ label: 'Paste',
+      action: () => { try { wv.paste(); } catch (_) {} } });
+  }
+  items.push({ label: 'Select All',
+    action: () => { try { wv.selectAll(); } catch (_) {} } });
   items.push({ divider: true });
+
+  // --- Print ---
+  items.push({ label: 'Print…',
+    action: () => { try { wv.print(); } catch (_) {} } });
+  items.push({ divider: true });
+
+  // --- Developer ---
   items.push({
     label: 'View Page Source',
     action: () => createTab('view-source:' + (params.pageURL || tab.url))
@@ -1110,10 +1130,15 @@ function buildWebviewContextMenu(tab, params) {
     }
   });
 
-  // Trim any leading / trailing divider leftovers.
+  // Clean up dividers: drop leading/trailing, collapse consecutive.
   while (items.length && items[0].divider)               items.shift();
   while (items.length && items[items.length - 1].divider) items.pop();
-  return items;
+  const deduped = [];
+  for (const it of items) {
+    if (it.divider && deduped.length && deduped[deduped.length - 1].divider) continue;
+    deduped.push(it);
+  }
+  return deduped;
 }
 
 // ============ Tab / URL-bar helpers (for context menus) ============
