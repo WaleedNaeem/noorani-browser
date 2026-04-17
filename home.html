@@ -64,6 +64,10 @@
       display: flex; align-items: center;
       padding: 20px 28px;
     }
+    /* Static wordmark. A background-clip: text shimmer was tried and
+       removed because sweeping the gradient past the text edges made
+       the left letters render transparent ("rani" bug) on some
+       Chromium versions. Correct-and-still beats broken-and-animated. */
     .wordmark {
       font-family: var(--font-serif);
       font-style: italic;
@@ -71,48 +75,31 @@
       color: var(--accent-ink);
       letter-spacing: 0.01em;
       user-select: none;
-
-      /* One-time shimmer on page load: a highlight sweeps across the
-         letters once, then the wordmark sits back at its base gold. */
-      background-image: linear-gradient(
-        100deg,
-        var(--accent-ink) 0%,
-        var(--accent-ink) 42%,
-        var(--shimmer-bright) 50%,
-        var(--accent-ink) 58%,
-        var(--accent-ink) 100%
-      );
-      background-size: 260% 100%;
-      background-position: 100% 0;
-      background-repeat: no-repeat;
-      -webkit-background-clip: text;
-              background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: wordmark-shimmer 1200ms ease-out 300ms 1 both;
-    }
-    @keyframes wordmark-shimmer {
-      from { background-position: 130% 0; }
-      to   { background-position: -30% 0; }
+      background: none;
     }
     .topbar__spacer { flex: 1 1 auto; }
     .pill--placeholder {
+      font-family: var(--font-sans);
       font-size: var(--text-xs);
       color: var(--text-tertiary);
-      padding: 5px 10px;
-      border: 1px dashed var(--border);
+      padding: 5px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
       border-radius: 999px;
+      line-height: 1.4;
     }
 
     /* -------- Hero -------- */
-    /* Content anchors roughly 30% from the top of the viewport rather than
-       dead-centre — feels grounded instead of floating. */
+    /* Content sits roughly 30% from the top of the viewport. Crucially
+       NOT flex:1 any more — we don't want the footer pinned to the
+       viewport bottom, we want it to follow the content naturally. */
     .hero {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
       display: flex; flex-direction: column;
       align-items: center; justify-content: flex-start;
       text-align: center;
-      padding: 14vh 28px 40px;
-      gap: 80px;
+      padding: 12vh 28px 0;
+      gap: 56px;
       max-width: 720px;
       width: 100%;
       margin: 0 auto;
@@ -125,6 +112,7 @@
       margin: 0;
       color: var(--text-primary);
       max-width: 720px;
+      background: transparent;
       opacity: 0;
       transform: translateY(-8px);
       animation: home-fade-in 400ms ease-out 50ms 1 both;
@@ -133,6 +121,7 @@
       font-family: var(--font-serif);
       font-style: italic;
       color: var(--accent-ink);
+      background: transparent;
     }
     @keyframes home-fade-in {
       from { opacity: 0; transform: translateY(-8px); }
@@ -150,6 +139,7 @@
       text-transform: uppercase;
       letter-spacing: 0.16em;
       color: var(--text-tertiary);
+      background: transparent;
       margin: 0 0 14px 6px;
       text-align: left;
     }
@@ -163,7 +153,7 @@
     }
     @media (max-width: 520px) {
       .greeting { font-size: var(--text-2xl); }
-      .hero    { padding-top: 10vh; gap: 56px; }
+      .hero    { padding-top: 9vh; gap: 40px; }
     }
 
     .shortcut {
@@ -222,9 +212,11 @@
       flex: 0 0 auto;
       display: flex; align-items: center; justify-content: center;
       gap: 14px;
-      padding: 20px 28px 28px;
+      margin-top: 80px;
+      padding: 0 28px 28px;
       font-size: var(--text-xs);
       color: var(--text-tertiary);
+      background: transparent;
     }
     .footer a {
       color: var(--text-tertiary);
