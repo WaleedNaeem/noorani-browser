@@ -348,6 +348,7 @@
     </section>
   </div>
 
+  <script src="/modal.js"></script>
   <script>
     (function () {
       const DATA = window.__NOORANI_DATA__ || {};
@@ -437,19 +438,39 @@
       });
 
       // ===== Clear data =====
+      const CLEAR_LABELS = {
+        history:   'Browsing history',
+        bookmarks: 'Bookmarks',
+        downloads: 'Downloads list',
+        settings:  'All settings (reset to defaults)'
+      };
+
       document.getElementById('clear-btn').addEventListener('click', async () => {
         if (!api) return;
         const options = {};
+        const selected = [];
         document.querySelectorAll('[data-clear]').forEach((cb) => {
-          if (cb.checked) options[cb.dataset.clear] = true;
+          if (cb.checked) {
+            options[cb.dataset.clear] = true;
+            selected.push(cb.dataset.clear);
+          }
         });
-        if (!Object.keys(options).length) return;
+        if (!selected.length) return;
+
+        const confirmed = await window.nooraniModal.confirm({
+          title:       'Clear Browsing Data',
+          message:     'This will permanently delete:',
+          details:     selected.map((k) => CLEAR_LABELS[k] || k),
+          confirmText: 'Clear Data',
+          variant:     'danger'
+        });
+        if (!confirmed) return;
 
         const status = document.getElementById('clear-status');
         status.textContent = '';
         const result = await api.browsingData.clear(options);
         const cleared = (result && result.cleared) || [];
-        if (!cleared.length) return; // user cancelled in the native dialog
+        if (!cleared.length) return;
 
         document.querySelectorAll('[data-clear]').forEach((cb) => { cb.checked = false; });
         status.textContent = 'Cleared: ' + cleared.join(', ');

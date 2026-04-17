@@ -1,6 +1,6 @@
 const {
   app, BrowserWindow, Menu, ipcMain, session, shell, protocol,
-  nativeTheme, dialog, webContents
+  nativeTheme, webContents, screen
 } = require('electron');
 const path = require('path');
 const fs   = require('fs');
@@ -153,12 +153,34 @@ function buildInternalHtml(pageName) {
   return template.replace('<!-- NOORANI_DATA -->', inject);
 }
 
+// Static asset files that noorani:// pages may request. Each is served with
+// a fixed content-type from the app directory. Whitelisted explicitly so a
+// malformed URL can never pull arbitrary files off disk.
+const NOORANI_ASSETS = Object.freeze({
+  '/modal.js': 'text/javascript; charset=utf-8'
+});
+
 function registerNooraniProtocol() {
   protocol.handle('noorani', (request) => {
     try {
       const u = new URL(request.url);
       const page = u.hostname;
-      if (u.pathname !== '/' && u.pathname !== '') {
+      const pathname = u.pathname || '/';
+
+      // Static asset (modal.js etc.) served for any hostname.
+      if (NOORANI_ASSETS[pathname]) {
+        const filePath = path.join(__dirname, pathname.slice(1));
+        if (!fs.existsSync(filePath)) {
+          return new Response('Not Found', { status: 404 });
+        }
+        const body = fs.readFileSync(filePath);
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-type': NOORANI_ASSETS[pathname] }
+        });
+      }
+
+      if (pathname !== '/' && pathname !== '') {
         return new Response('Not Found', { status: 404 });
       }
       if (page === 'home' || page === 'settings') {
@@ -337,30 +359,12 @@ function registerIpc() {
   });
 
   // Clear browsing data -----------------------------------------------------
+  // Confirmation lives in the renderer (nooraniModal). This handler trusts
+  // the renderer and just performs the deletion.
   ipcMain.handle('browsing-data:clear', async (_e, options) => {
     options = options || {};
     const selected = Object.keys(options).filter(k => options[k]);
     if (selected.length === 0) return { cleared: [] };
-
-    const labels = {
-      history:   'browsing history',
-      bookmarks: 'bookmarks',
-      downloads: 'downloads list',
-      settings:  'all settings (will reset to defaults)'
-    };
-    const detail = selected.map(k => '• ' + (labels[k] || k)).join('\n');
-
-    const focused = BrowserWindow.getFocusedWindow() || mainWindow;
-    const result = await dialog.showMessageBox(focused || undefined, {
-      type:        'warning',
-      buttons:     ['Cancel', 'Clear'],
-      defaultId:   0,
-      cancelId:    0,
-      title:       'Clear Browsing Data',
-      message:     'This will permanently delete:',
-      detail
-    });
-    if (result.response !== 1) return { cleared: [] };
 
     if (options.history)   saveJSON('history.json',   []);
     if (options.bookmarks) saveJSON('bookmarks.json', []);
@@ -436,13 +440,85 @@ function buildMenu() {
 }
 
 // ============================================================================
+// Window state persistence
+// ============================================================================
+
+const WINDOW_STATE_FILE    = 'window-state.json';
+const WINDOW_DEFAULT_WIDTH  = 1280;
+const WINDOW_DEFAULT_HEIGHT = 800;
+let   windowStateSaveTimer  = null;
+
+// A saved position is only used if at least one connected display still
+// contains (x, y) — otherwise the window could end up off-screen when a
+// monitor was disconnected since last launch.
+function boundsAreVisible(bounds) {
+  if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number' ||
+      typeof bounds.width !== 'number' || typeof bounds.height !== 'number') {
+    return false;
+  }
+  const displays = screen.getAllDisplays();
+  return displays.some((d) => {
+    const a = d.workArea;
+    return bounds.x < a.x + a.width &&
+           bounds.x + bounds.width  > a.x &&
+           bounds.y < a.y + a.height &&
+           bounds.y + bounds.height > a.y;
+  });
+}
+
+function loadWindowState() {
+  return loadJSON(WINDOW_STATE_FILE, null);
+}
+function saveWindowState(state) {
+  saveJSON(WINDOW_STATE_FILE, state);
+}
+
+function captureWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  // getNormalBounds() returns the non-maximized / non-fullscreen bounds, so
+  // reopening after a maximize still restores the user's prior window size.
+  const bounds = (typeof mainWindow.getNormalBounds === 'function')
+    ? mainWindow.getNormalBounds()
+    : mainWindow.getBounds();
+  return {
+    x:            bounds.x,
+    y:            bounds.y,
+    width:        bounds.width,
+    height:       bounds.height,
+    isMaximized:  mainWindow.isMaximized(),
+    isFullScreen: mainWindow.isFullScreen()
+  };
+}
+
+function scheduleWindowStateSave() {
+  if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    const state = captureWindowState();
+    if (state) saveWindowState(state);
+  }, 500);
+}
+
+function flushWindowStateSave() {
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+  }
+  const state = captureWindowState();
+  if (state) saveWindowState(state);
+}
+
+// ============================================================================
 // Window lifecycle
 // ============================================================================
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width:           1280,
-    height:          800,
+  const saved = loadWindowState();
+  const useSaved = saved && boundsAreVisible(saved);
+
+  const options = {
+    width:           useSaved ? saved.width  : WINDOW_DEFAULT_WIDTH,
+    height:          useSaved ? saved.height : WINDOW_DEFAULT_HEIGHT,
     title:           'Noorani Browser',
     backgroundColor: '#faf7f2',
     autoHideMenuBar: true,
@@ -452,10 +528,33 @@ function createWindow() {
       nodeIntegration:  false,
       webviewTag:       true
     }
-  });
+  };
+  if (useSaved) {
+    options.x = saved.x;
+    options.y = saved.y;
+  }
+
+  mainWindow = new BrowserWindow(options);
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  // First launch (no saved state) OR saved state was off-screen — maximize.
+  // If saved state explicitly said maximized/fullscreen, honour that.
+  if (!saved || !useSaved) {
+    mainWindow.maximize();
+  } else {
+    if (saved.isMaximized)  mainWindow.maximize();
+    if (saved.isFullScreen) mainWindow.setFullScreen(true);
+  }
+
+  mainWindow.on('resize',            scheduleWindowStateSave);
+  mainWindow.on('move',              scheduleWindowStateSave);
+  mainWindow.on('maximize',          scheduleWindowStateSave);
+  mainWindow.on('unmaximize',        scheduleWindowStateSave);
+  mainWindow.on('enter-full-screen', scheduleWindowStateSave);
+  mainWindow.on('leave-full-screen', scheduleWindowStateSave);
+  mainWindow.on('close',             flushWindowStateSave);
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }

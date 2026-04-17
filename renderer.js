@@ -504,7 +504,13 @@ downloadsBtn.addEventListener('click', () => openPanel('downloads'));
 panelClose.addEventListener  ('click', closePanel);
 
 panelClear.addEventListener('click', async () => {
-  if (!confirm('Clear all browsing history? This cannot be undone.')) return;
+  const confirmed = await window.nooraniModal.confirm({
+    title:       'Clear History',
+    message:     'This will permanently delete your entire browsing history.',
+    confirmText: 'Clear History',
+    variant:     'danger'
+  });
+  if (!confirmed) return;
   await window.nooraniAPI.history.clear();
 });
 
