@@ -96,6 +96,22 @@ if (isTrusted) {
       getAdhanUrl:  ()        => invoke('adhan:get-sound-url')
     },
 
+    blocklist: {
+      info:     ()      => invoke('blocklist:info'),
+      refresh:  ()      => invoke('blocklist:refresh'),
+      onChange: subscribe('blocklist:changed')
+    },
+    allowlist: {
+      add:    (entry) => invoke('allowlist:add',    entry),
+      remove: (entry) => invoke('allowlist:remove', entry),
+      temp:   (host)  => invoke('allowlist:temp',   host)
+    },
+    stats: {
+      get:      ()      => invoke('stats:get'),
+      reset:    ()      => invoke('stats:reset'),
+      onChange: subscribe('stats:changed')
+    },
+
     browsingData: {
       clear: (options) => invoke('browsing-data:clear', options)
     },

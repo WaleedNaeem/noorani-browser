@@ -391,6 +391,131 @@
       </div>
     </section>
 
+    <!-- CONTENT & SAFETY (Phase 9 Batch 2) -->
+    <section class="section" id="content-safety-section">
+      <h2>Content &amp; Safety</h2>
+      <div class="row">
+        <div class="row__label">Halal content filter</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-cs="halalFilter"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Blocks adult content and gambling sites across all tabs.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Family-safe mode</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-cs="familySafeMode"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Master filter — aggregates halal + riba + crypto/gambling + dating sites.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Ramadan mode</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-cs="ramadanMode"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Saves your preference. Time-based behaviour lands in a later batch.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">
+          Image modesty filter
+          <span style="display:inline-block; margin-left:6px; padding:1px 6px;
+                       background: var(--border); border-radius: 6px;
+                       font-size: 9px; letter-spacing: 0.08em;
+                       color: var(--muted); text-transform: uppercase;">
+            Coming v2
+          </span>
+        </div>
+        <div class="row__control">
+          <label class="switch" title="Not yet implemented" style="opacity: 0.5; cursor: not-allowed;">
+            <input type="checkbox" data-cs="imageModesty" disabled>
+            <span class="switch__slider"></span>
+          </label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            On-device modesty detection requires a vision model — deferred to v2.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRIVACY & VALUES (Phase 9 Batch 2) -->
+    <section class="section" id="privacy-section">
+      <h2>Privacy &amp; Values</h2>
+      <div class="row">
+        <div class="row__label">Block cryptocurrency &amp; gambling</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-pr="blockCryptoGambling"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Blocks major exchanges and sportsbooks (binance.com, bet365.com, …).
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Block interest-based (riba) ads</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-pr="blockRibaAds"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Blocks BNPL, credit cards, and conventional lending pages.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Keep all data local</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-pr="localDataOnly"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Noorani never phones home. No telemetry, no cloud sync.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Block Western ad trackers</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" data-pr="blockAdTracking"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Saves your preference. A dedicated tracker-blocking list will
+            ship in a future batch alongside the current adult/gambling
+            blocklist which already absorbs many ad hosts.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLOCKED SITES (Phase 9 Batch 2) -->
+    <section class="section" id="blocked-section">
+      <h2>Blocked Sites</h2>
+      <div class="row">
+        <div class="row__label">Coverage</div>
+        <div class="row__control">
+          <div id="block-coverage" class="row__hint" style="font-family: var(--font-sans); color: var(--text);"></div>
+          <div id="block-categories" class="row__hint" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Allowlist</div>
+        <div class="row__control">
+          <div id="allowlist-table"></div>
+          <div class="input-group" style="margin-top: 10px;">
+            <input type="text" id="allowlist-input" placeholder="example.com">
+            <button id="allowlist-add-btn">Add</button>
+          </div>
+          <div class="row__hint" id="allowlist-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Refresh blocklists</div>
+        <div class="row__control">
+          <button id="blocklist-refresh-btn">Refresh now</button>
+          <div class="row__hint" id="blocklist-refresh-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- WORSHIP & PRAYER (Phase 9 Batch 1) -->
     <section class="section" id="worship-section">
       <h2>Worship &amp; Prayer</h2>
@@ -948,8 +1073,172 @@
           renderAzan();
           renderAdhanStatus();
           renderDisplayToggles();
+          renderContentSafety();
+          renderPrivacy();
+          refreshBlocklistInfo();
+          renderAllowlistTable();
         });
       }
+
+      // =============== CONTENT & SAFETY + PRIVACY + BLOCKED ===============
+      const contentSafety = () =>
+        (settings && settings.features && settings.features.contentSafety) || {};
+      const privacy = () =>
+        (settings && settings.features && settings.features.privacy) || {};
+
+      function renderContentSafety() {
+        const cs = contentSafety();
+        document.querySelectorAll('[data-cs]').forEach((cb) => {
+          cb.checked = !!cs[cb.dataset.cs];
+        });
+      }
+      function renderPrivacy() {
+        const pr = privacy();
+        document.querySelectorAll('[data-pr]').forEach((cb) => {
+          cb.checked = !!pr[cb.dataset.pr];
+        });
+      }
+      renderContentSafety();
+      renderPrivacy();
+
+      // Single update path for features.contentSafety.* and features.privacy.*
+      // — the main-process settings:update handler takes a top-level key
+      // like 'features'. We rebuild the full features object, write, and
+      // let the onChange broadcast re-sync everyone.
+      async function patchFeatureCategory(category, key, value) {
+        if (!api) return;
+        const s = await api.settings.get();
+        const features = s.features || {};
+        features[category] = { ...(features[category] || {}), [key]: value };
+        await api.settings.update('features', features);
+      }
+      document.querySelectorAll('[data-cs]').forEach((cb) => {
+        if (cb.disabled) return;
+        cb.addEventListener('change', () => {
+          patchFeatureCategory('contentSafety', cb.dataset.cs, cb.checked);
+        });
+      });
+      document.querySelectorAll('[data-pr]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          patchFeatureCategory('privacy', cb.dataset.pr, cb.checked);
+        });
+      });
+
+      // --- Blocked Sites: coverage + categories ---
+      const coverageEl = document.getElementById('block-coverage');
+      const categoriesEl = document.getElementById('block-categories');
+      const CATEGORY_LABELS = {
+        riba:        'Riba (interest-based finance)',
+        crypto:      'Crypto / speculation',
+        gambling:    'Gambling',
+        dating:      'Dating apps',
+        adult:       'Adult content',
+        stevenblack: 'Adult/gambling (StevenBlack list)'
+      };
+
+      async function refreshBlocklistInfo() {
+        if (!api || !api.blocklist) return;
+        try {
+          const info = await api.blocklist.info();
+          const total = info.totalDomains || 0;
+          const active = info.activeDomains || 0;
+          const cats = (info.activeCategories || []).length;
+          coverageEl.textContent = cats
+            ? `Currently blocking ${active.toLocaleString()} domains across ${cats} active ${cats === 1 ? 'category' : 'categories'} (${total.toLocaleString()} total loaded).`
+            : `No filter categories active. ${total.toLocaleString()} domains available if you enable a filter.`;
+          const rows = [];
+          for (const [cat, count] of Object.entries(info.perCategory || {})) {
+            const label = CATEGORY_LABELS[cat] || cat;
+            const isActive = (info.activeCategories || []).includes(cat);
+            const mark = isActive ? '●' : '○';
+            rows.push(`<div style="display: flex; justify-content: space-between; padding: 3px 0;">` +
+              `<span>${mark} ${label}</span>` +
+              `<span style="color: var(--muted);">${count.toLocaleString()}</span>` +
+              `</div>`);
+          }
+          if (info.stevenblack && info.stevenblack.updatedAt) {
+            rows.push(`<div style="margin-top: 6px; color: var(--muted); font-size: 11px;">` +
+              `StevenBlack list updated ${new Date(info.stevenblack.updatedAt).toLocaleDateString()}.` +
+              `</div>`);
+          } else if (info.stevenblack && !info.stevenblack.loaded) {
+            rows.push(`<div style="margin-top: 6px; color: var(--muted); font-size: 11px;">` +
+              `StevenBlack list not yet downloaded — use "Refresh now" below.` +
+              `</div>`);
+          }
+          categoriesEl.innerHTML = rows.join('');
+        } catch (err) {
+          coverageEl.textContent = 'Blocklist status unavailable.';
+        }
+      }
+      refreshBlocklistInfo();
+      if (api && api.blocklist && api.blocklist.onChange) {
+        api.blocklist.onChange(() => refreshBlocklistInfo());
+      }
+
+      // --- Allowlist table ---
+      const allowlistTable = document.getElementById('allowlist-table');
+      const allowlistInput = document.getElementById('allowlist-input');
+      const allowlistStatus = document.getElementById('allowlist-status');
+
+      function renderAllowlistTable() {
+        const list = contentSafety().allowlist || [];
+        if (!list.length) {
+          allowlistTable.innerHTML = '<div style="color: var(--muted); font-size: 12px; padding: 4px 0;">' +
+            'No sites unblocked. Paste a domain below (or click "Remove from blocklist" on a blocked page).' +
+            '</div>';
+          return;
+        }
+        let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
+        for (const host of list) {
+          html += `<div style="display: flex; justify-content: space-between; align-items: center; ` +
+                  `padding: 6px 10px; background: var(--page-bg); border-radius: 6px;">` +
+                  `<span style="font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;">${host}</span>` +
+                  `<button data-remove-host="${host}" style="padding: 4px 10px; font-size: 11px;">Remove</button>` +
+                  `</div>`;
+        }
+        html += '</div>';
+        allowlistTable.innerHTML = html;
+        allowlistTable.querySelectorAll('[data-remove-host]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!api) return;
+            await api.allowlist.remove(btn.dataset.removeHost);
+          });
+        });
+      }
+      renderAllowlistTable();
+
+      document.getElementById('allowlist-add-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const v = (allowlistInput.value || '').trim();
+        if (!v) return;
+        const r = await api.allowlist.add(v);
+        if (r && r.error) {
+          allowlistStatus.textContent = 'Invalid domain.';
+        } else {
+          allowlistInput.value = '';
+          allowlistStatus.textContent = 'Added ' + (r.host || v) + '.';
+        }
+        setTimeout(() => { allowlistStatus.textContent = ''; }, 2500);
+      });
+
+      // --- Manual StevenBlack refresh ---
+      const refreshBtn    = document.getElementById('blocklist-refresh-btn');
+      const refreshStatus = document.getElementById('blocklist-refresh-status');
+      refreshBtn.addEventListener('click', async () => {
+        if (!api) return;
+        refreshBtn.disabled = true;
+        refreshStatus.textContent = 'Refreshing…';
+        const r = await api.blocklist.refresh();
+        refreshBtn.disabled = false;
+        if (r && r.error) {
+          refreshStatus.textContent = 'Failed: ' + r.error;
+        } else if (r && r.count) {
+          refreshStatus.textContent = 'Downloaded ' + r.count.toLocaleString() + ' domains.';
+        } else {
+          refreshStatus.textContent = 'Done.';
+        }
+        setTimeout(() => { refreshStatus.textContent = ''; }, 4000);
+      });
     })();
   </script>
 </body>

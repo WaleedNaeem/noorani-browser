@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <!-- NOORANI_DATA -->
+  <script>
+    (function () {
+      const d = window.__NOORANI_DATA__;
+      if (d && d.effectiveTheme) {
+        document.documentElement.setAttribute('data-theme', d.effectiveTheme);
+      }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/css/typography.css">
+  <title>Blocked by Noorani</title>
+  <style>
+    :root[data-theme="light"] {
+      --bg:           #faf7f2;
+      --card:         #ffffff;
+      --text:         #2a2a2a;
+      --muted:        #6b6b6b;
+      --faint:        #9a9a9a;
+      --accent:       #c9a961;
+      --accent-ink:   #8a6f2b;
+      --shield:       #c9a961;
+      --shield-bg:    rgba(201, 169, 97, 0.14);
+      --border:       #e8e2d5;
+      --chip-bg:      #f5eccf;
+      --chip-ink:     #8a6f2b;
+      --link-danger:  #b5382a;
+    }
+    :root[data-theme="dark"] {
+      --bg:           #1a1a1a;
+      --card:         #252525;
+      --text:         #e8e8e8;
+      --muted:        #9a9a9a;
+      --faint:        #6b6b6b;
+      --accent:       #d4af37;
+      --accent-ink:   #d4af37;
+      --shield:       #d4af37;
+      --shield-bg:    rgba(212, 175, 55, 0.14);
+      --border:       #3a3a3a;
+      --chip-bg:      rgba(212, 175, 55, 0.14);
+      --chip-ink:     #d4af37;
+      --link-danger:  #ef5350;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; min-height: 100vh;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+    }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 28px;
+    }
+    .card {
+      max-width: 520px; width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 36px 28px;
+      text-align: center;
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.08);
+    }
+    .shield {
+      width: 72px; height: 72px; margin: 0 auto 18px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--shield-bg);
+      border-radius: 50%;
+      color: var(--shield);
+    }
+    .shield svg { width: 36px; height: 36px; }
+    h1 {
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-weight: 400;
+      font-size: var(--text-2xl);
+      margin: 0 0 8px 0;
+      line-height: var(--leading-tight);
+    }
+    .host {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: var(--text-sm);
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .chip {
+      display: inline-block;
+      margin: 14px 0 4px;
+      padding: 4px 12px;
+      background: var(--chip-bg);
+      color: var(--chip-ink);
+      border-radius: 999px;
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: capitalize;
+    }
+    .why {
+      color: var(--muted);
+      font-size: var(--text-xs);
+      margin: 8px 0 24px;
+      line-height: 1.6;
+    }
+    .actions {
+      display: flex; flex-direction: column; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px 18px;
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+    .btn--primary {
+      background: var(--accent);
+      color: #1a1a1a;
+      border: 1px solid var(--accent);
+    }
+    .btn--primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #ffffff; }
+    .btn--ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn--ghost:hover { border-color: var(--accent); }
+    .links {
+      display: flex; gap: 14px; justify-content: center;
+      margin-top: 16px;
+      font-size: var(--text-xs);
+      color: var(--muted);
+    }
+    .links a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--faint);
+      cursor: pointer;
+    }
+    .links a:hover { color: var(--accent-ink); border-bottom-color: var(--accent-ink); }
+    .footer {
+      margin-top: 24px;
+      font-size: 11px;
+      color: var(--faint);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="shield">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        <path d="M9 12l2 2 4-4"></path>
+      </svg>
+    </div>
+    <h1>This site is blocked by Noorani</h1>
+    <div class="host" id="host">—</div>
+    <div class="chip" id="category">blocked</div>
+    <p class="why" id="why-text">
+      You can adjust content filtering in Settings.
+    </p>
+    <div class="actions">
+      <button class="btn btn--primary" id="open-settings">Open Settings</button>
+      <button class="btn btn--ghost" id="go-back">Go back</button>
+    </div>
+    <div class="links">
+      <a id="temp-unblock">Unblock this site temporarily</a>
+      <span>·</span>
+      <a id="remove-block">Remove from blocklist</a>
+    </div>
+    <div class="footer">Noorani Browser &middot; Content protection</div>
+  </div>
+
+  <script>
+    (function () {
+      const DATA = window.__NOORANI_DATA__ || {};
+      const api  = window.nooraniAPI;
+      const q    = DATA.query || {};
+      const host = q.host || '';
+      const category = q.category || 'blocked';
+      const originalUrl = q.url || '';
+
+      document.getElementById('host').textContent = host || '(unknown host)';
+      const chip = document.getElementById('category');
+      chip.textContent = category;
+
+      const CATEGORY_COPY = {
+        gambling:    'This site was categorised as gambling.',
+        crypto:      'This site was categorised as crypto/speculation.',
+        riba:        'This site was categorised as riba (interest-based finance).',
+        adult:       'This site was categorised as adult content.',
+        dating:      'This site was categorised as a dating platform.',
+        stevenblack: 'This site was categorised as adult/gambling.',
+        blocked:     'This site matched your Noorani content filter.'
+      };
+      document.getElementById('why-text').textContent =
+        (CATEGORY_COPY[category] || CATEGORY_COPY.blocked) +
+        ' You can adjust content filtering in Settings.';
+
+      document.getElementById('open-settings').addEventListener('click', () => {
+        window.location.href = 'noorani://settings';
+      });
+      document.getElementById('go-back').addEventListener('click', () => {
+        if (history.length > 1) history.back();
+        else window.location.href = 'noorani://home';
+      });
+      document.getElementById('temp-unblock').addEventListener('click', async () => {
+        if (!api || !host) return;
+        await api.allowlist.temp(host);
+        // Re-navigate to the originally requested URL (now allowed for
+        // the rest of this session).
+        if (originalUrl) window.location.href = originalUrl;
+        else window.location.href = 'https://' + host;
+      });
+      document.getElementById('remove-block').addEventListener('click', async () => {
+        if (!api || !host) return;
+        await api.allowlist.add(host);
+        if (originalUrl) window.location.href = originalUrl;
+        else window.location.href = 'https://' + host;
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@ const {
 const path = require('path');
 const fs   = require('fs');
 const prayer = require('./lib/prayer-engine');
+const blocklistEngine = require('./lib/blocklist-engine');
 
 let mainWindow = null;
 
@@ -12,7 +13,7 @@ let mainWindow = null;
 // Constants
 // ============================================================================
 
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 
 // Per-category feature defaults. When new keys are added later, they flow in
 // via the migration path in loadSettings() without wiping existing values.
@@ -51,7 +52,11 @@ const FEATURES_DEFAULTS = Object.freeze({
     halalFilter:        false,
     ramadanMode:        false,
     familySafeMode:     false,
-    imageModesty:       false
+    imageModesty:       false,
+    // Phase 9 Batch 2: user-maintained allowlist that overrides the
+    // bundled + downloaded blocklists. Domain strings; matches descend
+    // down to any subdomain.
+    allowlist:          []
   }),
   privacy: Object.freeze({
     blockAdTracking:    true,
@@ -82,6 +87,12 @@ const UI_DEFAULTS = Object.freeze({
 });
 const BOOKMARK_BAR_MODES = Object.freeze(['always', 'new-tab-only', 'never']);
 
+const STATS_DEFAULTS = Object.freeze({
+  blockedToday:        0,
+  blockedAllTime:      0,
+  blockedTodayResetAt: null
+});
+
 const SETTINGS_DEFAULTS = Object.freeze({
   theme:              'light',                   // 'light' | 'dark' | 'auto'
   searchEngine:       'google',
@@ -91,7 +102,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   onboarding:         ONBOARDING_DEFAULTS,
   location:           LOCATION_DEFAULTS,
   features:           FEATURES_DEFAULTS,
-  ui:                 UI_DEFAULTS
+  ui:                 UI_DEFAULTS,
+  stats:              STATS_DEFAULTS
 });
 
 const SUPPORTED_LANGUAGES = Object.freeze(['en', 'ur', 'ar', 'id', 'tr', 'ms']);
@@ -172,6 +184,7 @@ function migrateSettings(raw) {
       interface:     mergeCategory(FEATURES_DEFAULTS.interface,     rawFeatures.interface)
     },
     ui:       mergeCategory(UI_DEFAULTS, raw.ui),
+    stats:    mergeCategory(STATS_DEFAULTS, raw.stats),
     version:  SETTINGS_VERSION
   };
 
@@ -192,7 +205,64 @@ function migrateSettings(raw) {
   }
 
   normalizeWorship(merged.features.worship);
+  normalizeContentSafety(merged.features.contentSafety);
+  normalizeStats(merged.stats);
   return merged;
+}
+
+// contentSafety.allowlist is a list of cleaned hostnames. Strip any
+// scheme/path the user might paste, lowercase, and dedupe.
+function normalizeContentSafety(c) {
+  const raw = Array.isArray(c.allowlist) ? c.allowlist : [];
+  const clean = new Set();
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const h = cleanAllowlistEntry(entry);
+    if (h) clean.add(h);
+  }
+  c.allowlist = [...clean].sort();
+  return c;
+}
+
+function cleanAllowlistEntry(entry) {
+  let s = String(entry || '').trim().toLowerCase();
+  if (!s) return '';
+  // Drop scheme/path — we only match on host.
+  try {
+    if (!/^[a-z]+:\/\//.test(s)) s = 'http://' + s;
+    const u = new URL(s);
+    s = u.hostname;
+  } catch (_) {
+    s = s.replace(/^[a-z]+:\/\//, '').split('/')[0];
+  }
+  if (s.startsWith('www.')) s = s.slice(4);
+  if (s.endsWith('.')) s = s.slice(0, -1);
+  if (!/[a-z0-9.-]+/.test(s) || s.indexOf('.') < 0) return '';
+  return s;
+}
+
+function normalizeStats(s) {
+  if (!s || typeof s !== 'object') return;
+  const today     = Number(s.blockedToday);
+  const allTime   = Number(s.blockedAllTime);
+  s.blockedToday   = Number.isFinite(today)   && today   >= 0 ? Math.floor(today)   : 0;
+  s.blockedAllTime = Number.isFinite(allTime) && allTime >= 0 ? Math.floor(allTime) : 0;
+  if (s.blockedTodayResetAt && typeof s.blockedTodayResetAt !== 'string') {
+    s.blockedTodayResetAt = null;
+  }
+  // Daily rollover: if the last reset was on a different calendar day,
+  // zero today's counter.
+  if (s.blockedTodayResetAt) {
+    const lastReset = new Date(s.blockedTodayResetAt);
+    const now = new Date();
+    if (Number.isNaN(lastReset.getTime()) ||
+        lastReset.toDateString() !== now.toDateString()) {
+      s.blockedToday = 0;
+      s.blockedTodayResetAt = now.toISOString();
+    }
+  } else {
+    s.blockedTodayResetAt = new Date().toISOString();
+  }
 }
 
 // Post-mergeCategory hook for worship — the shallow merge doesn't descend
@@ -297,18 +367,28 @@ function computeTopSites(limit = 6) {
   return top;
 }
 
-function buildInternalHtml(pageName) {
+function buildInternalHtml(pageName, search) {
   const templatePath = path.join(__dirname, `${pageName}.html`);
   if (!fs.existsSync(templatePath)) return null;
   const template = fs.readFileSync(templatePath, 'utf-8');
   const settings = loadSettings();
+  // Query params reach the page via window.__NOORANI_DATA__.query — used
+  // by blocked.html to show the offending host + category.
+  const query = {};
+  if (search) {
+    try {
+      const p = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+      for (const [k, v] of p.entries()) query[k] = v;
+    } catch (_) {}
+  }
   const data = {
     page:           pageName,
-    topSites:       computeTopSites(6),
+    topSites:       pageName === 'home' ? computeTopSites(6) : [],
     settings,
     effectiveTheme: getEffectiveTheme(settings),
     versions:       getVersions(),
-    engines:        { ...SEARCH_ENGINES }
+    engines:        { ...SEARCH_ENGINES },
+    query
   };
   const inject =
     `<script id="__noorani_data">` +
@@ -369,8 +449,9 @@ function registerNooraniProtocol() {
       if (pathname !== '/' && pathname !== '') {
         return new Response('Not Found', { status: 404 });
       }
-      if (page === 'home' || page === 'settings' || page === 'welcome') {
-        const html = buildInternalHtml(page);
+      if (page === 'home' || page === 'settings' || page === 'welcome' ||
+          page === 'blocked') {
+        const html = buildInternalHtml(page, u.search);
         if (!html) return new Response('Template missing', { status: 500 });
         return new Response(html, {
           status: 200,
@@ -403,6 +484,148 @@ function broadcastSettings() {
     ...s,
     _effectiveTheme: getEffectiveTheme(s)
   });
+}
+
+// ============================================================================
+// Content protection — blocklist + webRequest interception
+// ============================================================================
+
+// Hot-path state. loadedBlocklists holds the parsed blocklist data
+// (read from disk at boot + on every refresh). combinedSet holds the
+// union of enabled categories' domain Sets — this is what the per-request
+// handler actually hits. allowlistSet holds the user's explicit overrides.
+let loadedBlocklists = null;
+let combinedSet      = new Set();
+let allowlistSet     = new Set();
+
+// Blocking stats accumulate in memory and flush to settings.stats every
+// STATS_FLUSH_INTERVAL_MS, plus on app quit. Avoids a disk write on every
+// blocked request (could easily be thousands per minute).
+let pendingBlockedIncrement = 0;
+let statsFlushTimer = null;
+const STATS_FLUSH_INTERVAL_MS = 15 * 1000;
+
+// A transient "temporary unblock" — a single allowance for a domain,
+// used when the user clicks "Unblock this site temporarily" on the
+// blocked page. Lives in memory only; resets on app relaunch.
+const tempUnblocked = new Set();
+
+function contentProtectionLoad() {
+  loadedBlocklists = blocklistEngine.loadBlocklists(dataDir());
+  rebuildCombinedSet();
+  rebuildAllowlistSet();
+}
+
+function rebuildCombinedSet() {
+  if (!loadedBlocklists) return;
+  const s = loadSettings();
+  const active = blocklistEngine.activeCategoriesFromSettings(s);
+  combinedSet = blocklistEngine.buildCombinedSet(loadedBlocklists, active);
+}
+
+function rebuildAllowlistSet() {
+  const s = loadSettings();
+  const list = (s.features && s.features.contentSafety &&
+                Array.isArray(s.features.contentSafety.allowlist))
+    ? s.features.contentSafety.allowlist : [];
+  allowlistSet = new Set(list.map(blocklistEngine.canonHost));
+}
+
+// Extracts the resource type (mainFrame vs subFrame vs asset) from the
+// details an Electron webRequest handler receives. Main-frame blocks
+// redirect to noorani://blocked; everything else is silently cancelled.
+function handleRequest(details, callback) {
+  const url = details.url;
+  if (!url || !combinedSet.size) return callback({ cancel: false });
+
+  // Temp unblock (in-memory, single session).
+  try {
+    const host = blocklistEngine.canonHost(new URL(url).hostname);
+    for (const a of blocklistEngine.hostAncestors(host)) {
+      if (tempUnblocked.has(a)) return callback({ cancel: false });
+    }
+  } catch (_) { /* fall through */ }
+
+  const result = blocklistEngine.isRequestBlocked(
+    url, combinedSet, loadedBlocklists, allowlistSet
+  );
+  if (!result.blocked) return callback({ cancel: false });
+
+  incrementBlockedCounter();
+
+  if (details.resourceType === 'mainFrame') {
+    let host = '';
+    try { host = new URL(url).hostname; } catch (_) {}
+    const params = new URLSearchParams({
+      host,
+      category: result.category || 'blocked',
+      url
+    });
+    return callback({
+      redirectURL: 'noorani://blocked?' + params.toString()
+    });
+  }
+  return callback({ cancel: true });
+}
+
+function registerWebRequestBlocker() {
+  // We never filter by URL pattern here — the handler itself does the
+  // category-sensitive lookup so settings changes take effect immediately
+  // without re-registering the handler.
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['<all_urls>'] },
+    handleRequest
+  );
+}
+
+function incrementBlockedCounter() {
+  pendingBlockedIncrement++;
+  if (!statsFlushTimer) {
+    statsFlushTimer = setTimeout(flushStats, STATS_FLUSH_INTERVAL_MS);
+  }
+}
+
+function flushStats() {
+  statsFlushTimer = null;
+  if (pendingBlockedIncrement <= 0) return;
+  const s = loadSettings();
+  normalizeStats(s.stats);  // rolls over at midnight
+  s.stats.blockedToday   += pendingBlockedIncrement;
+  s.stats.blockedAllTime += pendingBlockedIncrement;
+  pendingBlockedIncrement = 0;
+  saveSettings(s);
+  broadcastToAll('stats:changed', s.stats);
+}
+
+// Permanent allowlist management — single entry points so shape
+// normalisation lives in one place.
+function addToAllowlist(entry) {
+  const host = cleanAllowlistEntry(entry);
+  if (!host) return { error: 'invalid' };
+  const s = loadSettings();
+  const cs = s.features.contentSafety;
+  if (!Array.isArray(cs.allowlist)) cs.allowlist = [];
+  if (!cs.allowlist.includes(host)) {
+    cs.allowlist.push(host);
+    normalizeContentSafety(cs);
+    saveSettings(s);
+    rebuildAllowlistSet();
+    broadcastSettings();
+  }
+  return { host, allowlist: cs.allowlist };
+}
+
+function removeFromAllowlist(entry) {
+  const host = cleanAllowlistEntry(entry);
+  if (!host) return { error: 'invalid' };
+  const s = loadSettings();
+  const cs = s.features.contentSafety;
+  const next = (cs.allowlist || []).filter((h) => h !== host);
+  cs.allowlist = next;
+  saveSettings(s);
+  rebuildAllowlistSet();
+  broadcastSettings();
+  return { host, allowlist: next };
 }
 
 // ============================================================================
@@ -765,9 +988,14 @@ function registerIpc() {
     // Any top-level write could touch features — re-normalize worship to
     // keep shapes legal (cheap, idempotent).
     if (s.features && s.features.worship) normalizeWorship(s.features.worship);
+    if (s.features && s.features.contentSafety) {
+      normalizeContentSafety(s.features.contentSafety);
+    }
     saveSettings(s);
     broadcastSettings();
     onWorshipStateChanged();
+    rebuildCombinedSet();
+    rebuildAllowlistSet();
     return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
@@ -813,6 +1041,7 @@ function registerIpc() {
         s.features.interface.rtl = FEATURES_DEFAULTS.interface.rtl;
       }
       normalizeWorship(s.features.worship);
+      normalizeContentSafety(s.features.contentSafety);
     }
     if (p.location && typeof p.location === 'object') {
       s.location = mergeCategory(s.location, p.location);
@@ -822,6 +1051,8 @@ function registerIpc() {
     saveSettings(s);
     broadcastSettings();
     onWorshipStateChanged();
+    rebuildCombinedSet();
+    rebuildAllowlistSet();
     return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
@@ -955,6 +1186,55 @@ function registerIpc() {
     // Served through the noorani:// protocol handler so renderer CSP is happy.
     // Cache-busting timestamp so picking a new file takes effect immediately.
     return 'noorani://adhan/file?v=' + Date.now();
+  });
+
+  // Content protection (Phase 9 Batch 2) -----------------------------------
+  ipcMain.handle('blocklist:info', () => {
+    const loaded = loadedBlocklists || blocklistEngine.loadBlocklists(dataDir());
+    const s = loadSettings();
+    return {
+      perCategory:     loaded.perCategory,
+      totalDomains:    loaded.totalDomains,
+      activeCategories: blocklistEngine.activeCategoriesFromSettings(s),
+      activeDomains:   combinedSet.size,
+      stevenblack:     loaded.stevenblack,
+      allowlist:       s.features.contentSafety.allowlist || []
+    };
+  });
+  ipcMain.handle('blocklist:refresh', async () => {
+    const r = await blocklistEngine.downloadStevenBlackList(dataDir());
+    if (!r.error) {
+      contentProtectionLoad();
+      broadcastToAll('blocklist:changed', null);
+    }
+    return r;
+  });
+
+  ipcMain.handle('allowlist:add',    (_e, entry) => addToAllowlist(entry));
+  ipcMain.handle('allowlist:remove', (_e, entry) => removeFromAllowlist(entry));
+  ipcMain.handle('allowlist:temp',   (_e, host)  => {
+    // Temp unblock: user clicked "Unblock this site temporarily" on the
+    // blocked page. Good until app restart.
+    const h = blocklistEngine.canonHost(String(host || ''));
+    if (!h) return { error: 'invalid' };
+    tempUnblocked.add(h);
+    return { host: h };
+  });
+
+  ipcMain.handle('stats:get', () => {
+    // Flush any in-flight increments first so UI reads live values.
+    if (pendingBlockedIncrement > 0) flushStats();
+    const s = loadSettings();
+    normalizeStats(s.stats);
+    return s.stats;
+  });
+  ipcMain.handle('stats:reset', () => {
+    const s = loadSettings();
+    s.stats = { ...STATS_DEFAULTS, blockedTodayResetAt: new Date().toISOString() };
+    pendingBlockedIncrement = 0;
+    saveSettings(s);
+    broadcastToAll('stats:changed', s.stats);
+    return s.stats;
   });
 }
 
@@ -1147,8 +1427,20 @@ app.whenReady().then(() => {
   registerNooraniProtocol();
   setupDownloads();
   registerIpc();
+  // Content protection must be set up before any webview loads so the
+  // first navigation is filtered. Blocklists load synchronously from
+  // the bundled curated list; StevenBlack refresh is background async.
+  contentProtectionLoad();
+  registerWebRequestBlocker();
   Menu.setApplicationMenu(buildMenu());
   createWindow();
+
+  // Background: refresh StevenBlack list if missing or stale (> 7 days).
+  blocklistEngine.refreshBlocklistsIfStale(dataDir()).then((r) => {
+    if (!r || r.skipped || r.error) return;
+    contentProtectionLoad();
+    broadcastToAll('blocklist:changed', null);
+  }).catch(() => {});
 
   // Worship: arm schedulers as soon as the app is up. Safe even when the
   // user's location isn't geocoded yet — the scheduler retries in 5 min.
@@ -1186,4 +1478,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  // Final stats flush so the last batch of blocks isn't lost.
+  if (pendingBlockedIncrement > 0) flushStats();
 });
