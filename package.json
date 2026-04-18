@@ -1,7 +1,7 @@
 {
   "name": "noorani-browser",
   "productName": "Noorani Browser",
-  "version": "1.0.0-alpha",
+  "version": "1.1.0",
   "description": "A premium browser built for the Muslim community.",
   "main": "main.js",
   "scripts": {
@@ -41,7 +41,9 @@
       "!**/*.md"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/icons/icon.ico",
       "artifactName": "Noorani-Browser-Setup-${version}.${ext}"
     },
@@ -53,13 +55,17 @@
       "shortcutName": "Noorani Browser"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "assets/icons/icon.png",
       "category": "public.app-category.productivity",
       "artifactName": "Noorani-Browser-${version}.${ext}"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "assets/icons/icon.png",
       "category": "Network",
       "artifactName": "Noorani-Browser-${version}.${ext}"
@@ -69,5 +75,8 @@
       "owner": "WaleedNaeem",
       "repo": "noorani-browser"
     }
+  },
+  "dependencies": {
+    "adhan": "^4.4.3"
   }
 }

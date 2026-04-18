@@ -72,6 +72,30 @@ if (isTrusted) {
       onChange: subscribe('settings:changed')
     },
 
+    prayer: {
+      getTimes:  ()        => invoke('prayer:getTimes'),
+      getNext:   ()        => invoke('prayer:getNext'),
+      refresh:   ()        => invoke('prayer:refresh'),
+      onUpdate:  subscribe('prayer:nextChanged'),
+      onAzanPlay: subscribe('azan:play')
+    },
+    qibla: {
+      get: () => invoke('qibla:get')
+    },
+    hijri: {
+      get: (isoDate) => invoke('hijri:get', isoDate || null)
+    },
+    location: {
+      update:  (payload) => invoke('location:update', payload),
+      geocode: (payload) => invoke('location:geocode', payload)
+    },
+    worship: {
+      update:       (partial) => invoke('worship:update', partial),
+      pickAdhan:    ()        => invoke('adhan:pick-file'),
+      clearAdhan:   ()        => invoke('adhan:clear-file'),
+      getAdhanUrl:  ()        => invoke('adhan:get-sound-url')
+    },
+
     browsingData: {
       clear: (options) => invoke('browsing-data:clear', options)
     },

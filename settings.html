@@ -391,6 +391,128 @@
       </div>
     </section>
 
+    <!-- WORSHIP & PRAYER (Phase 9 Batch 1) -->
+    <section class="section" id="worship-section">
+      <h2>Worship &amp; Prayer</h2>
+
+      <!-- Location -->
+      <div class="row">
+        <div class="row__label">Location</div>
+        <div class="row__control">
+          <div id="location-summary" class="row__hint" style="font-family: var(--font-sans);"></div>
+          <div class="input-group" style="margin-top: 8px; flex-wrap: wrap;">
+            <input type="text" id="loc-city" placeholder="City" style="min-width: 140px;">
+            <input type="text" id="loc-country" placeholder="Country" style="min-width: 140px;">
+            <button id="loc-save-btn">Look up</button>
+          </div>
+          <div class="input-group" style="margin-top: 8px; flex-wrap: wrap;">
+            <input type="text" id="loc-lat" placeholder="Latitude"  style="min-width: 130px;">
+            <input type="text" id="loc-lng" placeholder="Longitude" style="min-width: 130px;">
+            <button id="loc-coords-btn">Save coords</button>
+          </div>
+          <div class="row__hint" id="loc-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+
+      <!-- Calculation -->
+      <div class="row">
+        <div class="row__label">Calculation method</div>
+        <div class="row__control">
+          <select id="calc-method">
+            <option value="Karachi">Karachi — University of Islamic Sciences</option>
+            <option value="MWL">Muslim World League</option>
+            <option value="Egyptian">Egyptian General Authority</option>
+            <option value="UmmAlQura">Umm al-Qura (Makkah)</option>
+            <option value="ISNA">ISNA (North America)</option>
+            <option value="Tehran">Institute of Geophysics, Tehran</option>
+            <option value="Jafari">Jafari (Leva, Qum)</option>
+            <option value="MoonsightingCommittee">Moonsighting Committee</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Asr method</div>
+        <div class="row__control">
+          <div class="checkboxes">
+            <label><input type="radio" name="asr-method" value="Shafi">
+              Shafi (Standard — shadow = object length)</label>
+            <label><input type="radio" name="asr-method" value="Hanafi">
+              Hanafi (shadow = 2× object length)</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Adjustments -->
+      <div class="row">
+        <div class="row__label">Prayer offsets</div>
+        <div class="row__control">
+          <div id="offsets-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
+            <!-- populated by JS -->
+          </div>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Minute adjustments (−30 to +30) applied to each calculated time.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Hijri adjustment</div>
+        <div class="row__control">
+          <input type="range" id="hijri-adj" min="-2" max="2" step="1" value="0"
+                 style="min-width: 220px; accent-color: var(--accent);">
+          <span id="hijri-adj-val" style="margin-left: 10px; font-family: var(--font-sans); color: var(--muted);">0</span>
+          <div class="row__hint" id="hijri-today" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="row">
+        <div class="row__label">Azan notifications</div>
+        <div class="row__control">
+          <label class="switch" style="display: inline-block;">
+            <input type="checkbox" id="azan-master">
+            <span class="switch__slider"></span>
+          </label>
+          <span id="azan-master-label" style="margin-left: 10px; color: var(--muted);"></span>
+        </div>
+      </div>
+      <div class="row" id="azan-per-prayer-row">
+        <div class="row__label">Per-prayer</div>
+        <div class="row__control">
+          <div class="checkboxes" id="azan-per-prayer" style="flex-direction: row; flex-wrap: wrap; gap: 14px;">
+            <!-- populated by JS -->
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Adhan sound</div>
+        <div class="row__control">
+          <div class="input-group" style="flex-wrap: wrap;">
+            <button id="adhan-pick-btn">Pick audio file…</button>
+            <button id="adhan-clear-btn">Silent</button>
+            <button id="adhan-test-btn">Test (5s)</button>
+          </div>
+          <div class="row__hint" id="adhan-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+
+      <!-- Display -->
+      <div class="row">
+        <div class="row__label">Display</div>
+        <div class="row__control">
+          <div class="checkboxes">
+            <label><input type="checkbox" data-worship-display="prayerTimes">
+              Show prayer pill in toolbar &amp; prayer cards on new tab</label>
+            <label><input type="checkbox" data-worship-display="hijriCalendar">
+              Show Hijri date</label>
+            <label><input type="checkbox" data-worship-display="qibla">
+              Show Qibla card</label>
+            <label><input type="checkbox" data-worship-display="azanNotifications">
+              Enable azan notifications</label>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ONBOARDING -->
     <section class="section">
       <h2>Onboarding</h2>
@@ -599,6 +721,235 @@
       document.getElementById('version').textContent          = versions.app      || '—';
       document.getElementById('electron-version').textContent = versions.electron || '—';
       document.getElementById('chromium-version').textContent = versions.chromium || '—';
+
+      // ================= WORSHIP & PRAYER (Phase 9 Batch 1) =================
+      const PRAYER_NAMES = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+      const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+      // --- Location summary + inputs ---
+      function locationSummary(loc) {
+        if (!loc) return '';
+        const bits = [];
+        if (loc.city)    bits.push(loc.city);
+        if (loc.country) bits.push(loc.country);
+        const name = bits.join(', ') || '(not set)';
+        const coords = Number.isFinite(loc.lat) && Number.isFinite(loc.lng)
+          ? `  [${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}]`
+          : '  [no coordinates — prayer times inactive]';
+        return name + coords;
+      }
+      function refreshLocationSummary(next) {
+        const loc = (next && next.location) || (settings && settings.location) || {};
+        document.getElementById('location-summary').textContent = locationSummary(loc);
+        if (loc.city)    document.getElementById('loc-city').value    = loc.city;
+        if (loc.country) document.getElementById('loc-country').value = loc.country;
+        if (Number.isFinite(loc.lat)) document.getElementById('loc-lat').value = String(loc.lat);
+        if (Number.isFinite(loc.lng)) document.getElementById('loc-lng').value = String(loc.lng);
+      }
+      refreshLocationSummary();
+
+      document.getElementById('loc-save-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const city = document.getElementById('loc-city').value.trim();
+        const country = document.getElementById('loc-country').value.trim();
+        const status = document.getElementById('loc-status');
+        status.textContent = 'Looking up…';
+        const r = await api.location.geocode({ city, country });
+        if (r && r.error) {
+          status.textContent = 'Lookup failed: ' + r.error;
+          return;
+        }
+        status.textContent = 'Saved.';
+        setTimeout(() => { status.textContent = ''; }, 2500);
+      });
+      document.getElementById('loc-coords-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const lat = parseFloat(document.getElementById('loc-lat').value);
+        const lng = parseFloat(document.getElementById('loc-lng').value);
+        const status = document.getElementById('loc-status');
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          status.textContent = 'Latitude and longitude must be numbers.';
+          return;
+        }
+        await api.location.update({ lat, lng });
+        status.textContent = 'Coordinates saved.';
+        setTimeout(() => { status.textContent = ''; }, 2500);
+      });
+
+      // --- Helpers to read/write worship config ---
+      const worship = () => (settings && settings.features && settings.features.worship) || {};
+      function patchWorship(partial) {
+        if (!api) return Promise.resolve(null);
+        return api.worship.update(partial);
+      }
+
+      // --- Calculation method / Asr method ---
+      const calcSel = document.getElementById('calc-method');
+      calcSel.value = worship().calculationMethod || 'Karachi';
+      calcSel.addEventListener('change', () => patchWorship({ calculationMethod: calcSel.value }));
+
+      function syncAsr() {
+        const v = worship().asrMethod || 'Hanafi';
+        document.querySelectorAll('input[name="asr-method"]').forEach((r) => {
+          r.checked = (r.value === v);
+        });
+      }
+      syncAsr();
+      document.querySelectorAll('input[name="asr-method"]').forEach((r) => {
+        r.addEventListener('change', () => {
+          if (r.checked) patchWorship({ asrMethod: r.value });
+        });
+      });
+
+      // --- Prayer offsets grid ---
+      const offsetsGrid = document.getElementById('offsets-grid');
+      function renderOffsets() {
+        const off = worship().prayerOffsets || {};
+        offsetsGrid.innerHTML = '';
+        for (const name of PRAYER_NAMES) {
+          const wrap = document.createElement('label');
+          wrap.style.display = 'flex';
+          wrap.style.flexDirection = 'column';
+          wrap.style.gap = '4px';
+          wrap.style.fontSize = 'var(--text-xs)';
+          wrap.style.color = 'var(--muted)';
+          const lab = document.createElement('span');
+          lab.textContent = cap(name);
+          lab.style.letterSpacing = '0.1em';
+          lab.style.textTransform = 'uppercase';
+          lab.style.fontWeight = '600';
+          const inp = document.createElement('input');
+          inp.type = 'number';
+          inp.min = '-30'; inp.max = '30'; inp.step = '1';
+          inp.value = String(off[name] || 0);
+          inp.style.minWidth = '60px';
+          inp.style.padding = '6px 8px';
+          inp.dataset.prayer = name;
+          inp.addEventListener('change', () => {
+            const v = Math.max(-30, Math.min(30, parseInt(inp.value, 10) || 0));
+            inp.value = String(v);
+            patchWorship({ prayerOffsets: { [name]: v } });
+          });
+          wrap.append(lab, inp);
+          offsetsGrid.appendChild(wrap);
+        }
+      }
+      renderOffsets();
+
+      // --- Hijri adjustment slider ---
+      const hijriSlider = document.getElementById('hijri-adj');
+      const hijriValEl  = document.getElementById('hijri-adj-val');
+      const hijriToday  = document.getElementById('hijri-today');
+      hijriSlider.value = String(worship().hijriAdjustment || 0);
+      hijriValEl.textContent = hijriSlider.value;
+      async function refreshHijriToday() {
+        if (!api || !api.hijri) return;
+        try {
+          const h = await api.hijri.get();
+          hijriToday.textContent = h && h.day
+            ? `Today: ${h.day} ${h.monthName} ${h.year}`
+            : '';
+        } catch (_) {}
+      }
+      refreshHijriToday();
+      hijriSlider.addEventListener('input', () => {
+        hijriValEl.textContent = hijriSlider.value;
+      });
+      hijriSlider.addEventListener('change', async () => {
+        const v = parseInt(hijriSlider.value, 10) || 0;
+        await patchWorship({ hijriAdjustment: v });
+        refreshHijriToday();
+      });
+
+      // --- Azan: master + per-prayer toggles ---
+      const azanMaster = document.getElementById('azan-master');
+      const azanMasterLabel = document.getElementById('azan-master-label');
+      const perWrap    = document.getElementById('azan-per-prayer');
+
+      function renderAzan() {
+        const w = worship();
+        azanMaster.checked = !!w.azanNotifications;
+        azanMasterLabel.textContent = azanMaster.checked ? 'On' : 'Off';
+        perWrap.innerHTML = '';
+        const enabled = w.adhanEnabled || {};
+        for (const name of PRAYER_NAMES) {
+          const lab = document.createElement('label');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = !!enabled[name];
+          cb.disabled = !w.azanNotifications;
+          cb.addEventListener('change', () => {
+            patchWorship({ adhanEnabled: { [name]: cb.checked } });
+          });
+          lab.append(cb, document.createTextNode(' ' + cap(name)));
+          perWrap.appendChild(lab);
+        }
+      }
+      renderAzan();
+      azanMaster.addEventListener('change', async () => {
+        await patchWorship({ azanNotifications: azanMaster.checked });
+      });
+
+      // --- Adhan sound picker / test ---
+      const adhanStatus = document.getElementById('adhan-status');
+      function renderAdhanStatus() {
+        const p = worship().adhanSound;
+        adhanStatus.textContent = p ? 'Current file: ' + p : 'Silent (no audio).';
+      }
+      renderAdhanStatus();
+      document.getElementById('adhan-pick-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const r = await api.worship.pickAdhan();
+        if (r && r.error) adhanStatus.textContent = 'Error: ' + r.error;
+      });
+      document.getElementById('adhan-clear-btn').addEventListener('click', async () => {
+        if (!api) return;
+        await api.worship.clearAdhan();
+      });
+      document.getElementById('adhan-test-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const url = await api.worship.getAdhanUrl();
+        if (!url) { adhanStatus.textContent = 'No audio selected.'; return; }
+        try {
+          const audio = new Audio(url);
+          audio.play();
+          setTimeout(() => { try { audio.pause(); audio.currentTime = 0; } catch (_) {} }, 5000);
+        } catch (err) {
+          adhanStatus.textContent = 'Playback failed: ' + err.message;
+        }
+      });
+
+      // --- Display toggles ---
+      function renderDisplayToggles() {
+        const w = worship();
+        document.querySelectorAll('[data-worship-display]').forEach((cb) => {
+          const key = cb.dataset.worshipDisplay;
+          cb.checked = !!w[key];
+        });
+      }
+      renderDisplayToggles();
+      document.querySelectorAll('[data-worship-display]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          patchWorship({ [cb.dataset.worshipDisplay]: cb.checked });
+        });
+      });
+
+      // --- Settings change subscription: keep everything in sync ---
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          Object.assign(settings, next);
+          refreshLocationSummary(next);
+          calcSel.value = worship().calculationMethod || 'Karachi';
+          syncAsr();
+          renderOffsets();
+          hijriSlider.value = String(worship().hijriAdjustment || 0);
+          hijriValEl.textContent = hijriSlider.value;
+          refreshHijriToday();
+          renderAzan();
+          renderAdhanStatus();
+          renderDisplayToggles();
+        });
+      }
     })();
   </script>
 </body>

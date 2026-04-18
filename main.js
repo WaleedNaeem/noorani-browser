@@ -1,9 +1,10 @@
 const {
   app, BrowserWindow, Menu, ipcMain, session, shell, protocol,
-  nativeTheme, webContents, screen
+  nativeTheme, webContents, screen, Notification, dialog, net
 } = require('electron');
 const path = require('path');
 const fs   = require('fs');
+const prayer = require('./lib/prayer-engine');
 
 let mainWindow = null;
 
@@ -15,14 +16,36 @@ const SETTINGS_VERSION = 3;
 
 // Per-category feature defaults. When new keys are added later, they flow in
 // via the migration path in loadSettings() without wiping existing values.
+const CALCULATION_METHODS = Object.freeze([
+  'Karachi', 'MWL', 'Egyptian', 'UmmAlQura', 'ISNA', 'Tehran',
+  'Jafari', 'MoonsightingCommittee'
+]);
+const ASR_METHODS = Object.freeze(['Shafi', 'Hanafi']);
+const PRAYER_NAMES = Object.freeze(['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']);
+
+const ADHAN_ENABLED_DEFAULTS = Object.freeze({
+  fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true
+});
+const PRAYER_OFFSETS_DEFAULTS = Object.freeze({
+  fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0
+});
+
 const FEATURES_DEFAULTS = Object.freeze({
   worship: Object.freeze({
+    // Display toggles — control whether UI elements render at all.
     prayerTimes:        false,
     azanNotifications:  false,
     qibla:              false,
     hijriCalendar:      false,
     quranQuickAccess:   false,
-    duaBookmarks:       false
+    duaBookmarks:       false,
+    // Calculation config (Phase 9 Batch 1)
+    calculationMethod:  'Karachi',
+    asrMethod:          'Hanafi',
+    adhanSound:         null,            // null = silent, else absolute path to audio
+    adhanEnabled:       ADHAN_ENABLED_DEFAULTS,
+    prayerOffsets:      PRAYER_OFFSETS_DEFAULTS,
+    hijriAdjustment:    0
   }),
   contentSafety: Object.freeze({
     halalFilter:        false,
@@ -168,7 +191,40 @@ function migrateSettings(raw) {
     merged.ui.showBookmarkBar = UI_DEFAULTS.showBookmarkBar;
   }
 
+  normalizeWorship(merged.features.worship);
   return merged;
+}
+
+// Post-mergeCategory hook for worship — the shallow merge doesn't descend
+// into adhanEnabled / prayerOffsets, so users upgrading from a prior schema
+// where those were absent would end up with frozen defaults they couldn't
+// mutate later. Deep-fill and validate scalar fields here.
+function normalizeWorship(w) {
+  w.adhanEnabled  = mergeCategory(ADHAN_ENABLED_DEFAULTS,  w.adhanEnabled);
+  w.prayerOffsets = mergeCategory(PRAYER_OFFSETS_DEFAULTS, w.prayerOffsets);
+
+  if (!CALCULATION_METHODS.includes(w.calculationMethod)) {
+    w.calculationMethod = FEATURES_DEFAULTS.worship.calculationMethod;
+  }
+  if (!ASR_METHODS.includes(w.asrMethod)) {
+    w.asrMethod = FEATURES_DEFAULTS.worship.asrMethod;
+  }
+  if (typeof w.adhanSound !== 'string' || !w.adhanSound.length) {
+    w.adhanSound = null;
+  }
+  // Clamp offsets and adhanEnabled into legal shapes.
+  for (const name of PRAYER_NAMES) {
+    const off = Number(w.prayerOffsets[name]);
+    w.prayerOffsets[name] = Number.isFinite(off)
+      ? Math.max(-30, Math.min(30, Math.round(off)))
+      : 0;
+    w.adhanEnabled[name] = !!w.adhanEnabled[name];
+  }
+  const adj = Number(w.hijriAdjustment);
+  w.hijriAdjustment = Number.isFinite(adj)
+    ? Math.max(-2, Math.min(2, Math.round(adj)))
+    : 0;
+  return w;
 }
 
 function loadSettings() {
@@ -289,6 +345,27 @@ function registerNooraniProtocol() {
         });
       }
 
+      // Adhan audio — served from the user's data dir via the noorani://
+      // scheme so the renderer CSP doesn't need a file: exception.
+      if (page === 'adhan') {
+        const s = loadSettings();
+        const p = s.features && s.features.worship && s.features.worship.adhanSound;
+        if (!p || !fs.existsSync(p)) {
+          return new Response('Not Found', { status: 404 });
+        }
+        const ext = path.extname(p).toLowerCase();
+        const ct = ext === '.mp3' ? 'audio/mpeg'
+                 : ext === '.ogg' ? 'audio/ogg'
+                 : ext === '.wav' ? 'audio/wav'
+                 : ext === '.m4a' ? 'audio/mp4'
+                 :                  'application/octet-stream';
+        const body = fs.readFileSync(p);
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-type': ct, 'cache-control': 'no-store' }
+        });
+      }
+
       if (pathname !== '/' && pathname !== '') {
         return new Response('Not Found', { status: 404 });
       }
@@ -376,6 +453,201 @@ function setupDownloads() {
       broadcastDownloads();
     });
   });
+}
+
+// ============================================================================
+// Worship / Prayer logic (Phase 9 Batch 1)
+// ============================================================================
+
+// Keeps the chain of setTimeouts we've installed for today's prayer
+// notifications and for the next-prayer refresh broadcast. Cleared and
+// re-armed on every call to onWorshipStateChanged().
+let prayerRefreshTimer = null;
+const azanTimers = [];
+
+function clearAzanTimers() {
+  while (azanTimers.length) clearTimeout(azanTimers.pop());
+}
+function clearPrayerRefreshTimer() {
+  if (prayerRefreshTimer) {
+    clearTimeout(prayerRefreshTimer);
+    prayerRefreshTimer = null;
+  }
+}
+
+// Returns { times, next, location, worship } or null if location not set.
+function computePrayerSnapshot(date) {
+  const s = loadSettings();
+  const loc = s.location || {};
+  const w = s.features.worship;
+  if (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) {
+    return {
+      location: loc,
+      worship: w,
+      times: null,
+      next: null,
+      error: 'no-coords'
+    };
+  }
+  try {
+    const times = prayer.calculatePrayerTimes(
+      loc.lat, loc.lng, date || new Date(),
+      w.calculationMethod, w.asrMethod, w.prayerOffsets
+    );
+    const next = prayer.getNextPrayer(
+      loc.lat, loc.lng, w.calculationMethod, w.asrMethod, w.prayerOffsets
+    );
+    return { location: loc, worship: w, times, next, error: null };
+  } catch (err) {
+    console.error('[noorani] prayer compute failed:', err);
+    return { location: loc, worship: w, times: null, next: null, error: err.message };
+  }
+}
+
+function computeNextPrayer() {
+  const snap = computePrayerSnapshot();
+  return snap.next ? { ...snap.next, error: snap.error } : { next: null, error: snap.error };
+}
+
+function computeQibla() {
+  const s = loadSettings();
+  const loc = s.location || {};
+  if (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) {
+    return { bearing: null, compass: null, error: 'no-coords' };
+  }
+  return { ...prayer.calculateQibla(loc.lat, loc.lng), error: null };
+}
+
+function computeHijri(isoDate) {
+  const s = loadSettings();
+  const adj = s.features.worship.hijriAdjustment || 0;
+  const d = isoDate ? new Date(isoDate) : new Date();
+  return prayer.getHijriDate(d, adj);
+}
+
+// Nominatim geocoder. Uses Electron's net module so we share Chromium's
+// certificate store. One request, limit=1. Respects a polite User-Agent.
+function geocodeLocation(city, country) {
+  return new Promise((resolve) => {
+    const q = [city, country].filter(Boolean).join(', ');
+    const url = 'https://nominatim.openstreetmap.org/search?q=' +
+                encodeURIComponent(q) + '&format=json&limit=1';
+    const req = net.request({ method: 'GET', url });
+    req.setHeader('User-Agent', 'NooraniBrowser/1.1 (https://nooraniBrowser.com)');
+    req.setHeader('Accept', 'application/json');
+
+    let body = '';
+    let settled = false;
+    const done = (payload) => {
+      if (settled) return;
+      settled = true;
+      resolve(payload);
+    };
+
+    req.on('response', (res) => {
+      res.on('data', (chunk) => { body += chunk.toString(); });
+      res.on('end', () => {
+        try {
+          const arr = JSON.parse(body);
+          if (!Array.isArray(arr) || !arr.length) {
+            return done({ error: 'no-results' });
+          }
+          const lat = parseFloat(arr[0].lat);
+          const lng = parseFloat(arr[0].lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return done({ error: 'bad-coords' });
+          }
+          done({ lat, lng, displayName: arr[0].display_name || null });
+        } catch (err) {
+          done({ error: 'parse-failed' });
+        }
+      });
+    });
+    req.on('error', (err) => done({ error: err.message || 'network' }));
+    req.end();
+
+    setTimeout(() => done({ error: 'timeout' }), 8000);
+  });
+}
+
+// Schedules one setTimeout per prayer-time boundary for today so the UI
+// can refresh at the moment a prayer ends and the next one is due.
+// Re-armed whenever settings change or a day rolls over.
+function schedulePrayerRefresh() {
+  clearPrayerRefreshTimer();
+  const snap = computePrayerSnapshot();
+  if (!snap.times) {
+    // No coordinates yet — retry every 5 min so geocoding, once done,
+    // kicks in without an app restart.
+    prayerRefreshTimer = setTimeout(schedulePrayerRefresh, 5 * 60 * 1000);
+    return;
+  }
+  const now = Date.now();
+  const upcoming = [];
+  for (const t of [snap.times.fajr, snap.times.sunrise, snap.times.dhuhr,
+                   snap.times.asr, snap.times.maghrib, snap.times.isha]) {
+    if (t && t.getTime() > now) upcoming.push(t.getTime());
+  }
+  // Next-day Fajr as fallback anchor.
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowSnap = computePrayerSnapshot(tomorrow);
+  if (tomorrowSnap.times) upcoming.push(tomorrowSnap.times.fajr.getTime());
+
+  const earliest = Math.min(...upcoming);
+  const delay = Math.max(1000, earliest - now + 1000);   // 1-sec cushion
+  prayerRefreshTimer = setTimeout(() => {
+    broadcastToAll('prayer:nextChanged', computeNextPrayer());
+    schedulePrayerRefresh();
+  }, delay);
+}
+
+// Arms one system notification per enabled prayer for today.
+function scheduleAzanNotifications() {
+  clearAzanTimers();
+  const s = loadSettings();
+  const w = s.features.worship;
+  if (!w.azanNotifications) return;
+
+  const snap = computePrayerSnapshot();
+  if (!snap.times) return;
+
+  const now = Date.now();
+  for (const name of PRAYER_NAMES) {
+    if (!w.adhanEnabled[name]) continue;
+    const when = snap.times[name];
+    if (!when || when.getTime() <= now) continue;
+    const delay = when.getTime() - now;
+    const timer = setTimeout(() => fireAzanNotification(name, when), delay);
+    azanTimers.push(timer);
+  }
+}
+
+function fireAzanNotification(prayerName, when) {
+  const label = prayer.PRAYER_LABELS[prayerName] || prayerName;
+  const timeStr = when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  try {
+    const n = new Notification({
+      title:  `${label} time`,
+      body:   `It is time for ${label} prayer. ${timeStr}`,
+      silent: true   // we handle audio ourselves via the renderer
+    });
+    n.show();
+    setTimeout(() => { try { n.close(); } catch (_) {} }, 30000);
+  } catch (err) {
+    console.error('[noorani] notification failed:', err);
+  }
+  // Ask the renderer to play the user's selected adhan audio (if any).
+  const s = loadSettings();
+  if (s.features.worship.adhanSound) {
+    broadcastToAll('azan:play', { prayerName, soundPath: s.features.worship.adhanSound });
+  }
+}
+
+// Single entry point called whenever worship-relevant state changes
+// (location, settings, day rollover). Re-arms both schedules.
+function onWorshipStateChanged() {
+  schedulePrayerRefresh();
+  scheduleAzanNotifications();
 }
 
 // ============================================================================
@@ -490,8 +762,12 @@ function registerIpc() {
     if (!payload || typeof payload.key !== 'string') return null;
     const s = loadSettings();
     s[payload.key] = payload.value;
+    // Any top-level write could touch features — re-normalize worship to
+    // keep shapes legal (cheap, idempotent).
+    if (s.features && s.features.worship) normalizeWorship(s.features.worship);
     saveSettings(s);
     broadcastSettings();
+    onWorshipStateChanged();
     return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
@@ -536,6 +812,7 @@ function registerIpc() {
       if (typeof s.features.interface.rtl !== 'boolean') {
         s.features.interface.rtl = FEATURES_DEFAULTS.interface.rtl;
       }
+      normalizeWorship(s.features.worship);
     }
     if (p.location && typeof p.location === 'object') {
       s.location = mergeCategory(s.location, p.location);
@@ -544,6 +821,7 @@ function registerIpc() {
 
     saveSettings(s);
     broadcastSettings();
+    onWorshipStateChanged();
     return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
@@ -560,6 +838,124 @@ function registerIpc() {
   ipcMain.handle('app:versions',   () => getVersions());
   ipcMain.handle('app:data-dir',   () => dataDir());
   ipcMain.handle('home:top-sites', () => computeTopSites(6));
+
+  // Worship / Prayer (Phase 9 Batch 1) --------------------------------------
+  // All of these are safe to call even when the user's location hasn't been
+  // geocoded yet — they return null/empty so the UI can show a sensible
+  // "set your location" state.
+  ipcMain.handle('prayer:getTimes', () => computePrayerSnapshot());
+  ipcMain.handle('prayer:getNext',  () => computeNextPrayer());
+  ipcMain.handle('prayer:refresh',  () => {
+    schedulePrayerRefresh();
+    scheduleAzanNotifications();
+    broadcastToAll('prayer:nextChanged', computeNextPrayer());
+    return computePrayerSnapshot();
+  });
+  ipcMain.handle('qibla:get', () => computeQibla());
+  ipcMain.handle('hijri:get', (_e, isoDate) => computeHijri(isoDate));
+
+  // Location management ----------------------------------------------------
+  ipcMain.handle('location:update', (_e, payload) => {
+    if (!payload || typeof payload !== 'object') return loadSettings().location;
+    const s = loadSettings();
+    const next = { ...s.location };
+    if (typeof payload.city    === 'string') next.city    = payload.city.trim() || null;
+    if (typeof payload.country === 'string') next.country = payload.country.trim() || null;
+    if (Number.isFinite(Number(payload.lat))) next.lat = Number(payload.lat);
+    else if (payload.lat === null)            next.lat = null;
+    if (Number.isFinite(Number(payload.lng))) next.lng = Number(payload.lng);
+    else if (payload.lng === null)            next.lng = null;
+    s.location = next;
+    saveSettings(s);
+    broadcastSettings();
+    onWorshipStateChanged();
+    return s.location;
+  });
+  ipcMain.handle('location:geocode', async (_e, payload) => {
+    const city    = payload && payload.city    ? String(payload.city).trim()    : '';
+    const country = payload && payload.country ? String(payload.country).trim() : '';
+    if (!city && !country) return { error: 'Need a city or country' };
+    const result = await geocodeLocation(city, country);
+    if (result.error) return result;
+    // Persist on success.
+    const s = loadSettings();
+    s.location = { ...s.location, city: city || s.location.city,
+                   country: country || s.location.country,
+                   lat: result.lat, lng: result.lng };
+    saveSettings(s);
+    broadcastSettings();
+    onWorshipStateChanged();
+    return result;
+  });
+
+  // Worship partial update — shallow-merges a partial worship object into
+  // features.worship. Single entry point from the settings page so the
+  // renderer never has to reconstruct the full object.
+  ipcMain.handle('worship:update', (_e, partial) => {
+    if (!partial || typeof partial !== 'object') return loadSettings();
+    const s = loadSettings();
+    const w = s.features.worship;
+    // Shallow merge but deep-merge the two known sub-objects.
+    for (const [k, v] of Object.entries(partial)) {
+      if (v === undefined) continue;
+      if (k === 'adhanEnabled' && v && typeof v === 'object') {
+        w.adhanEnabled = { ...w.adhanEnabled, ...v };
+      } else if (k === 'prayerOffsets' && v && typeof v === 'object') {
+        w.prayerOffsets = { ...w.prayerOffsets, ...v };
+      } else {
+        w[k] = v;
+      }
+    }
+    normalizeWorship(w);
+    saveSettings(s);
+    broadcastSettings();
+    onWorshipStateChanged();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
+
+  // Adhan audio: pick a file → copy to userData/data/adhan/ → return path.
+  // Intentionally limited to MP3/OGG/WAV to keep the Notification sound
+  // subsystem happy across platforms.
+  ipcMain.handle('adhan:pick-file', async () => {
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Select an adhan audio file',
+      properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'ogg', 'wav', 'm4a'] }]
+    });
+    if (res.canceled || !res.filePaths.length) return { canceled: true };
+    const src = res.filePaths[0];
+    const adhanDir = path.join(dataDir(), 'adhan');
+    if (!fs.existsSync(adhanDir)) fs.mkdirSync(adhanDir, { recursive: true });
+    const ext = path.extname(src) || '.mp3';
+    const dst = path.join(adhanDir, 'user-adhan' + ext);
+    try { fs.copyFileSync(src, dst); }
+    catch (err) { return { error: err.message }; }
+
+    const s = loadSettings();
+    s.features.worship.adhanSound = dst;
+    normalizeWorship(s.features.worship);
+    saveSettings(s);
+    broadcastSettings();
+    onWorshipStateChanged();
+    return { path: dst };
+  });
+  ipcMain.handle('adhan:clear-file', () => {
+    const s = loadSettings();
+    s.features.worship.adhanSound = null;
+    saveSettings(s);
+    broadcastSettings();
+    onWorshipStateChanged();
+    return { path: null };
+  });
+  ipcMain.handle('adhan:get-sound-url', () => {
+    const s = loadSettings();
+    const p = s.features.worship.adhanSound;
+    if (!p || !fs.existsSync(p)) return null;
+    // Served through the noorani:// protocol handler so renderer CSP is happy.
+    // Cache-busting timestamp so picking a new file takes effect immediately.
+    return 'noorani://adhan/file?v=' + Date.now();
+  });
 }
 
 // ============================================================================
@@ -753,6 +1149,29 @@ app.whenReady().then(() => {
   registerIpc();
   Menu.setApplicationMenu(buildMenu());
   createWindow();
+
+  // Worship: arm schedulers as soon as the app is up. Safe even when the
+  // user's location isn't geocoded yet — the scheduler retries in 5 min.
+  onWorshipStateChanged();
+
+  // If onboarding left us with city+country but no coords, try to geocode
+  // once in the background — the prayer engine then activates automatically
+  // via the 5-minute retry inside schedulePrayerRefresh().
+  (async () => {
+    const s = loadSettings();
+    const loc = s.location || {};
+    const haveCoords = Number.isFinite(loc.lat) && Number.isFinite(loc.lng);
+    if (!haveCoords && (loc.city || loc.country)) {
+      const r = await geocodeLocation(loc.city || '', loc.country || '');
+      if (!r.error) {
+        const s2 = loadSettings();
+        s2.location = { ...s2.location, lat: r.lat, lng: r.lng };
+        saveSettings(s2);
+        broadcastSettings();
+        onWorshipStateChanged();
+      }
+    }
+  })();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

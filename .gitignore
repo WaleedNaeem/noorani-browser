@@ -32,3 +32,6 @@ Desktop.ini
 
 # Electron
 app.asar
+
+# Local work artifacts (screenshots, probe logs)
+_screenshots/

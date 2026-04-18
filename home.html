@@ -89,6 +89,138 @@
       line-height: 1.4;
     }
 
+    /* ---- Phase 9 Batch 1: Prayer + Hijri + Qibla ---- */
+    .prayer-section {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .prayer-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px 14px;
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      margin-bottom: 12px;
+    }
+    .prayer-meta__sep { opacity: 0.5; }
+    .prayer-meta strong {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .prayer-cards {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 640px) {
+      .prayer-cards { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 420px) {
+      .prayer-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    .prayer-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 10px 12px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+    }
+    .prayer-card--next {
+      background: linear-gradient(180deg,
+        rgba(201, 169, 97, 0.14) 0%,
+        rgba(201, 169, 97, 0.06) 100%);
+      border-color: var(--accent);
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-2px);
+    }
+    :root[data-theme="dark"] .prayer-card--next {
+      background: linear-gradient(180deg,
+        rgba(212, 175, 55, 0.18) 0%,
+        rgba(212, 175, 55, 0.08) 100%);
+    }
+    .prayer-card__name {
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--text-tertiary);
+      margin: 0 0 6px;
+    }
+    .prayer-card--next .prayer-card__name { color: var(--accent-ink); }
+    .prayer-card__time {
+      font-family: var(--font-serif);
+      font-size: 24px;
+      font-weight: 400;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .prayer-card__state {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 6px;
+      min-height: 14px;
+    }
+    .prayer-card--passed .prayer-card__time { color: var(--text-tertiary); }
+    .prayer-card--next .prayer-card__state {
+      color: var(--accent-ink);
+      font-weight: 600;
+    }
+
+    /* Qibla card */
+    .qibla-card {
+      margin-top: 18px;
+      display: flex; align-items: center; gap: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      box-shadow: var(--shadow);
+    }
+    .qibla-card__compass {
+      position: relative;
+      width: 48px; height: 48px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex: 0 0 48px;
+    }
+    .qibla-card__arrow {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 22px solid var(--accent-ink);
+      transform-origin: center 15px;
+      transition: transform 300ms ease;
+    }
+    .qibla-card__label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+    .qibla-card__value {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .qibla-card__hint {
+      color: var(--text-tertiary);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
     /* -------- Hero -------- */
     /* Content fills the space between the topbar and the footer and
        centres itself vertically. The footer is pinned to the viewport
@@ -238,12 +370,25 @@
   <header class="topbar">
     <div class="wordmark">Noorani</div>
     <div class="topbar__spacer"></div>
-    <!-- Placeholder for Phase 9 prayer-time pill. -->
-    <span class="pill--placeholder">Prayer times coming soon</span>
   </header>
 
   <main class="hero">
     <h1 class="greeting" id="greeting">&nbsp;</h1>
+
+    <section class="prayer-section" id="prayer-section" hidden>
+      <div class="prayer-meta" id="prayer-meta"></div>
+      <div class="prayer-cards" id="prayer-cards"></div>
+      <div class="qibla-card" id="qibla-card" hidden>
+        <div class="qibla-card__compass">
+          <div class="qibla-card__arrow" id="qibla-arrow"></div>
+        </div>
+        <div>
+          <div class="qibla-card__label">Qibla</div>
+          <div class="qibla-card__value" id="qibla-value">—</div>
+          <div class="qibla-card__hint" id="qibla-hint">Direction to the Kaaba</div>
+        </div>
+      </div>
+    </section>
 
     <section class="shortcuts">
       <div class="shortcuts__label">Shortcuts</div>
@@ -343,6 +488,146 @@
           const tag = document.getElementById('version-tag');
           if (v && v.app) tag.textContent = `Noorani Browser v${v.app}`;
         }).catch(() => {});
+      }
+
+      // ---------- Phase 9 Batch 1: prayer / hijri / qibla ----------
+      const prayerSection = document.getElementById('prayer-section');
+      const prayerMeta    = document.getElementById('prayer-meta');
+      const prayerCards   = document.getElementById('prayer-cards');
+      const qiblaCard     = document.getElementById('qibla-card');
+      const qiblaValue    = document.getElementById('qibla-value');
+      const qiblaArrow    = document.getElementById('qibla-arrow');
+
+      const PRAYER_ORDER = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+      const pretty = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+      function clockOf(d) {
+        if (!d) return '—';
+        const x = (d instanceof Date) ? d : new Date(d);
+        return x.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+      function countdownLabel(mins) {
+        if (!Number.isFinite(mins) || mins < 0) mins = 0;
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
+      }
+
+      function getFlags() {
+        const s = (settings && settings.features) || {};
+        return (s.worship) || {};
+      }
+
+      async function renderPrayerUI() {
+        const s  = await (api && api.settings && api.settings.get());
+        const w  = (s && s.features && s.features.worship) || {};
+        const showPrayer = !!w.prayerTimes;
+        const showHijri  = !!w.hijriCalendar;
+        const showQibla  = !!w.qibla;
+
+        if (!showPrayer && !showQibla) {
+          prayerSection.hidden = true;
+          return;
+        }
+        prayerSection.hidden = false;
+
+        // ----- Times -----
+        if (showPrayer) {
+          prayerCards.style.display = '';
+          const snap = await (api && api.prayer && api.prayer.getTimes());
+          if (!snap || !snap.times) {
+            prayerCards.innerHTML =
+              '<div style="grid-column: 1 / -1; padding: 16px; ' +
+              'text-align: center; color: var(--text-tertiary); ' +
+              'font-size: 12px;">Prayer location not set. ' +
+              '<a href="noorani://settings" style="color: var(--accent-ink);">Update it in Settings.</a>' +
+              '</div>';
+            prayerMeta.innerHTML = '';
+          } else {
+            renderCards(snap);
+            renderMeta(snap, s, showHijri);
+          }
+        } else {
+          prayerCards.style.display = 'none';
+          prayerMeta.innerHTML = '';
+        }
+
+        // ----- Qibla -----
+        if (showQibla) {
+          const q = await (api && api.qibla && api.qibla.get());
+          if (q && Number.isFinite(q.bearing)) {
+            qiblaCard.hidden = false;
+            qiblaValue.textContent = `${q.bearing}° ${q.compass}`;
+            qiblaArrow.style.transform = `rotate(${q.bearing}deg)`;
+          } else {
+            qiblaCard.hidden = true;
+          }
+        } else {
+          qiblaCard.hidden = true;
+        }
+      }
+
+      function renderCards(snap) {
+        const t = snap.times;
+        const now = Date.now();
+        const next = snap.next;
+        const nextName = next ? next.prayerName : null;
+        const parts = [];
+        for (const name of PRAYER_ORDER) {
+          const when = t[name] ? new Date(t[name]) : null;
+          const passed = when && when.getTime() < now;
+          const isNext = (name === nextName);
+          let state = 'upcoming';
+          let stateText = 'upcoming';
+          if (passed) { state = 'passed'; stateText = 'passed'; }
+          if (isNext) {
+            state = 'next';
+            const mins = when
+              ? Math.max(0, Math.round((when.getTime() - now) / 60000))
+              : next.minutesUntil;
+            stateText = countdownLabel(mins);
+          }
+          parts.push(
+            `<div class="prayer-card prayer-card--${state}">` +
+              `<div class="prayer-card__name">${pretty(name)}</div>` +
+              `<div class="prayer-card__time">${clockOf(when)}</div>` +
+              `<div class="prayer-card__state">${stateText}</div>` +
+            `</div>`
+          );
+        }
+        prayerCards.innerHTML = parts.join('');
+      }
+
+      async function renderMeta(snap, s, showHijri) {
+        const bits = [];
+        if (showHijri && api && api.hijri) {
+          try {
+            const h = await api.hijri.get();
+            if (h && h.day) bits.push(`<strong>${h.day} ${h.monthName} ${h.year}</strong>`);
+          } catch (_) {}
+        }
+        const loc = (s && s.location) || {};
+        if (loc.city) bits.push(loc.city);
+        if (snap && snap.times) {
+          bits.push(`Sunrise ${clockOf(snap.times.sunrise)}`);
+          bits.push(`Maghrib ${clockOf(snap.times.maghrib)}`);
+        }
+        prayerMeta.innerHTML = bits.length
+          ? bits.join(' <span class="prayer-meta__sep">·</span> ')
+          : '';
+      }
+
+      // Initial render + refresh every minute + react to main-process updates.
+      renderPrayerUI();
+      setInterval(() => renderPrayerUI().catch(() => {}), 60 * 1000);
+
+      if (api && api.prayer && api.prayer.onUpdate) {
+        api.prayer.onUpdate(() => renderPrayerUI().catch(() => {}));
+      }
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          Object.assign(settings, next);
+          renderPrayerUI().catch(() => {});
+        });
       }
     })();
   </script>

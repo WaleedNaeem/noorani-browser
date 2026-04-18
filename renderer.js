@@ -1302,8 +1302,143 @@ if (api && api.settings && api.settings.onChange) {
     currentSettings = { ...currentSettings, ...next };
     applyTheme(next._effectiveTheme || next.theme);
     updateBookmarkBarVisibility();
+    // Worship toggle may have flipped — re-fetch/clear the pill.
+    refreshPrayerSnapshot();
     // Note: engine / homepage updates apply to next actions;
     // we don't retroactively change current tabs' URLs.
+  });
+}
+
+// ============ Prayer pill (Phase 9 Batch 1) ============
+
+const prayerPillEl  = document.getElementById('prayer-pill');
+const prayerPillTxt = document.getElementById('prayer-pill-text');
+const prayerPopEl   = document.getElementById('prayer-pop');
+
+let prayerTickTimer = null;
+let prayerSnapshot  = null;  // { times, next, worship, location }
+
+function formatClock(d) {
+  if (!d) return '—';
+  const date = (d instanceof Date) ? d : new Date(d);
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+function formatCountdown(minutes) {
+  if (!Number.isFinite(minutes) || minutes < 0) minutes = 0;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+function labelize(name) { return name.charAt(0).toUpperCase() + name.slice(1); }
+
+function isPrayerFeatureOn() {
+  return !!(currentSettings && currentSettings.features &&
+            currentSettings.features.worship &&
+            currentSettings.features.worship.prayerTimes);
+}
+
+function renderPrayerPill() {
+  if (!prayerPillEl) return;
+  if (!isPrayerFeatureOn() || !prayerSnapshot || !prayerSnapshot.next) {
+    prayerPillEl.hidden = true;
+    prayerPopEl.hidden = true;
+    return;
+  }
+  // Recompute the countdown locally so it stays accurate between main-process
+  // refreshes (which only fire on prayer-boundary crossings).
+  const next = prayerSnapshot.next;
+  const target = next.time ? new Date(next.time) : null;
+  const mins = target
+    ? Math.max(0, Math.round((target.getTime() - Date.now()) / 60000))
+    : next.minutesUntil;
+  prayerPillTxt.textContent = `${labelize(next.prayerName)} in ${formatCountdown(mins)}`;
+  prayerPillEl.hidden = false;
+}
+
+function renderPrayerPop() {
+  if (!prayerSnapshot || !prayerSnapshot.times) {
+    prayerPopEl.innerHTML =
+      '<div class="prayer-pop__meta">Set your location in Settings to see prayer times.</div>';
+    return;
+  }
+  const t = prayerSnapshot.times;
+  const now = Date.now();
+  const next = prayerSnapshot.next;
+  const nextName = next ? next.prayerName : null;
+  const names = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  let html = '';
+  for (const n of names) {
+    const time = t[n] ? new Date(t[n]) : null;
+    const passed = time && time.getTime() < now;
+    const active = (n === nextName);
+    const cls = 'prayer-pop__row' +
+      (active ? ' prayer-pop__row--active' : '') +
+      (passed ? ' prayer-pop__row--passed' : '');
+    html += `<div class="${cls}">`
+         +  `<span class="prayer-pop__name">${labelize(n)}</span>`
+         +  `<span class="prayer-pop__time">${formatClock(time)}</span>`
+         +  `</div>`;
+  }
+  html += '<div class="prayer-pop__divider"></div>'
+       +  '<div class="prayer-pop__meta">'
+       +    `Sunrise ${formatClock(t.sunrise)}`;
+  const loc = prayerSnapshot.location || {};
+  if (loc.city) html += ` · ${loc.city}`;
+  html += '</div>';
+  prayerPopEl.innerHTML = html;
+}
+
+if (prayerPillEl) {
+  prayerPillEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (prayerPopEl.hidden) {
+      renderPrayerPop();
+      prayerPopEl.hidden = false;
+    } else {
+      prayerPopEl.hidden = true;
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!prayerPopEl.hidden &&
+        e.target !== prayerPillEl &&
+        !prayerPillEl.contains(e.target) &&
+        !prayerPopEl.contains(e.target)) {
+      prayerPopEl.hidden = true;
+    }
+  });
+}
+
+async function refreshPrayerSnapshot() {
+  if (!api || !api.prayer) return;
+  try {
+    prayerSnapshot = await api.prayer.getTimes();
+  } catch (_) { prayerSnapshot = null; }
+  renderPrayerPill();
+  if (!prayerPopEl.hidden) renderPrayerPop();
+}
+
+function startPrayerTicker() {
+  if (prayerTickTimer) clearInterval(prayerTickTimer);
+  prayerTickTimer = setInterval(() => {
+    if (!isPrayerFeatureOn()) return;
+    renderPrayerPill();
+  }, 30 * 1000);
+}
+
+if (api && api.prayer && api.prayer.onUpdate) {
+  api.prayer.onUpdate(() => refreshPrayerSnapshot());
+}
+
+// Play the user-chosen adhan audio when main fires an azan event.
+if (api && api.prayer && api.prayer.onAzanPlay) {
+  api.prayer.onAzanPlay(async (_payload) => {
+    try {
+      const url = await api.worship.getAdhanUrl();
+      if (!url) return;
+      const audio = new Audio(url);
+      audio.play().catch(() => {});
+    } catch (_) {}
   });
 }
 
@@ -1335,6 +1470,10 @@ async function boot() {
     });
   }
   updateBookmarkBarVisibility();
+
+  // Prayer pill fires and forgets — failure just leaves the pill hidden.
+  refreshPrayerSnapshot();
+  startPrayerTicker();
 
   // First-run: open welcome instead of the homepage. Subsequent launches
   // take the normal path via getHomepage().
