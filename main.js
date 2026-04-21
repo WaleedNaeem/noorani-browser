@@ -1739,6 +1739,10 @@ function buildMenu() {
 const WINDOW_STATE_FILE    = 'window-state.json';
 const WINDOW_DEFAULT_WIDTH  = 1280;
 const WINDOW_DEFAULT_HEIGHT = 800;
+// Floor below which the chrome (tabs + toolbar + URL bar) visibly breaks.
+// Matches Chrome/Brave/Edge desktop defaults; applied to every BrowserWindow.
+const WINDOW_MIN_WIDTH      = 960;
+const WINDOW_MIN_HEIGHT     = 600;
 let   windowStateSaveTimer  = null;
 
 // A saved position is only used if at least one connected display still
@@ -1812,6 +1816,8 @@ function createWindow() {
   const options = {
     width:           useSaved ? saved.width  : WINDOW_DEFAULT_WIDTH,
     height:          useSaved ? saved.height : WINDOW_DEFAULT_HEIGHT,
+    minWidth:        WINDOW_MIN_WIDTH,
+    minHeight:       WINDOW_MIN_HEIGHT,
     title:           'Noorani Browser',
     backgroundColor: '#faf7f2',
     autoHideMenuBar: true,

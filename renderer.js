@@ -392,6 +392,11 @@ function switchToTab(id) {
   if (!tab) return;
   // Hide any open context menu — stale context from the previous tab.
   if (window.nooraniContextMenu) window.nooraniContextMenu.hide();
+  // Also dismiss the prayer dropdown — its content (next-prayer countdown)
+  // is global, but the visual association with the old tab is noise.
+  if (typeof window.__nooraniClosePrayerDropdown === 'function') {
+    window.__nooraniClosePrayerDropdown();
+  }
   for (const t of tabs) {
     const isActive = (t.id === id);
     t.webview.classList.toggle('hidden', !isActive);
@@ -1431,23 +1436,68 @@ function renderPrayerPop() {
 }
 
 if (prayerPillEl) {
+  // Dismissal pattern mirrors Phase 7.9 nooraniContextMenu: listeners are
+  // attached only while the dropdown is open and removed symmetrically when
+  // it closes, so no stale handlers leak. Each of outside-click / Escape /
+  // window blur / window resize independently triggers closeDropdown().
+  let dismissers = null;
+
+  function closePrayerDropdown() {
+    prayerPopEl.hidden = true;
+    if (dismissers) {
+      document.removeEventListener('mousedown', dismissers.onMousedown, true);
+      document.removeEventListener('keydown',   dismissers.onKey, true);
+      window.removeEventListener('blur',        dismissers.onBlur);
+      window.removeEventListener('resize',      dismissers.onResize);
+      dismissers = null;
+    }
+  }
+
+  function openPrayerDropdown() {
+    renderPrayerPop();
+    prayerPopEl.hidden = false;
+
+    const onMousedown = (e) => {
+      // Clicks on the pill itself are handled by the pill's own click
+      // listener (toggle). Clicks inside the dropdown are routed to
+      // individual prayer items below. Anything else closes.
+      if (prayerPillEl.contains(e.target) || prayerPopEl.contains(e.target)) return;
+      closePrayerDropdown();
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); closePrayerDropdown(); }
+    };
+    const onBlur   = () => closePrayerDropdown();
+    const onResize = () => closePrayerDropdown();
+
+    // Capture phase so we see the event before any deeper handler can
+    // stopPropagation() on it.
+    document.addEventListener('mousedown', onMousedown, true);
+    document.addEventListener('keydown',   onKey, true);
+    window.addEventListener('blur',        onBlur);
+    window.addEventListener('resize',      onResize);
+    dismissers = { onMousedown, onKey, onBlur, onResize };
+  }
+
   prayerPillEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (prayerPopEl.hidden) {
-      renderPrayerPop();
-      prayerPopEl.hidden = false;
-    } else {
-      prayerPopEl.hidden = true;
-    }
+    if (prayerPopEl.hidden) openPrayerDropdown();
+    else                    closePrayerDropdown();
   });
-  document.addEventListener('click', (e) => {
-    if (!prayerPopEl.hidden &&
-        e.target !== prayerPillEl &&
-        !prayerPillEl.contains(e.target) &&
-        !prayerPopEl.contains(e.target)) {
-      prayerPopEl.hidden = true;
-    }
+
+  // Clicks on individual prayer rows close the dropdown (they're
+  // display-only today, so there's no action beyond the dismissal —
+  // but keeping the close on click matches the spec for future actions).
+  prayerPopEl.addEventListener('click', (e) => {
+    const row = e.target.closest('.prayer-pop__row');
+    if (row) closePrayerDropdown();
   });
+
+  // Tab-switch within Noorani also dismisses — the switchToTab() path
+  // already calls nooraniContextMenu.hide(); close the dropdown alongside.
+  if (typeof window !== 'undefined') {
+    window.__nooraniClosePrayerDropdown = closePrayerDropdown;
+  }
 }
 
 async function refreshPrayerSnapshot() {
