@@ -89,6 +89,67 @@
       line-height: 1.4;
     }
 
+    /* ---- Phase 9 Batch 3: Today's verse card ---- */
+    .verse-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-top: 28px;
+      box-shadow: var(--shadow);
+    }
+    .verse-card__label {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .verse-card__arabic {
+      font-family: 'Amiri Quran', 'Traditional Arabic', 'Noto Naskh Arabic', serif;
+      font-size: 26px;
+      line-height: 2.0;
+      color: var(--text-primary);
+      direction: rtl;
+      text-align: right;
+      margin-bottom: 14px;
+    }
+    .verse-card__translation {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+    .verse-card__ref-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .verse-card__ref {
+      font-size: 12px;
+      color: var(--accent-ink);
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+    .verse-card__link {
+      font-size: 13px;
+      color: var(--accent-ink);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s;
+    }
+    .verse-card__link:hover { border-bottom-color: var(--accent); }
+
+    @font-face {
+      font-family: 'Amiri Quran';
+      font-style: normal;
+      font-weight: 400;
+      src: url('/assets/fonts/AmiriQuran-Regular.ttf') format('truetype');
+      font-display: swap;
+    }
+
     /* ---- Phase 9 Batch 1: Prayer + Hijri + Qibla ---- */
     .prayer-section {
       width: 100%;
@@ -409,6 +470,17 @@
       </div>
     </section>
 
+    <!-- Phase 9 Batch 3: Today's verse card, gated on quranQuickAccess. -->
+    <section class="verse-card" id="verse-card" hidden>
+      <div class="verse-card__label">Today's verse</div>
+      <div class="verse-card__arabic" id="verse-card-arabic" dir="rtl"></div>
+      <div class="verse-card__translation" id="verse-card-translation"></div>
+      <div class="verse-card__ref-row">
+        <span class="verse-card__ref" id="verse-card-ref"></span>
+        <a class="verse-card__link" id="verse-card-link" href="#">Read in context →</a>
+      </div>
+    </section>
+
     <div class="stats-row" id="stats-row" hidden>
       <span><strong id="stats-today">0</strong> blocked today</span>
       <span class="stats-row__sep">·</span>
@@ -653,8 +725,57 @@
           Object.assign(settings, next);
           renderPrayerUI().catch(() => {});
           renderStatsRow().catch(() => {});
+          renderVerseCard().catch(() => {});
         });
       }
+
+      // ---------- Phase 9 Batch 3: Today's verse card ----------
+      const verseCard          = document.getElementById('verse-card');
+      const verseCardArabic    = document.getElementById('verse-card-arabic');
+      const verseCardTrans     = document.getElementById('verse-card-translation');
+      const verseCardRef       = document.getElementById('verse-card-ref');
+      const verseCardLink      = document.getElementById('verse-card-link');
+
+      function dailyIndex(length) {
+        // Stable-per-day hash: same verse shown all day, different tomorrow.
+        // Uses the local calendar date so day-rollover matches the user's day.
+        const d = new Date();
+        const seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+        return seed % Math.max(1, length);
+      }
+
+      async function renderVerseCard() {
+        if (!api || !api.quran) { verseCard.hidden = true; return; }
+        const s = await (api && api.settings && api.settings.get());
+        const w = (s && s.features && s.features.worship) || {};
+        if (!w.quranQuickAccess) { verseCard.hidden = true; return; }
+
+        const refs = await api.quran.getDailyVerses();
+        if (!Array.isArray(refs) || refs.length === 0) {
+          verseCard.hidden = true;
+          return;
+        }
+        const pick = refs[dailyIndex(refs.length)];
+        const m = String(pick && pick.ref || '').match(/^(\d+):(\d+)$/);
+        if (!m) { verseCard.hidden = true; return; }
+        const sn = Number(m[1]);
+        const vn = Number(m[2]);
+
+        const verse = await api.quran.getVerse(sn, vn);
+        if (!verse) { verseCard.hidden = true; return; }
+
+        const lang = w.quranTranslation === 'pickthall' ? 'pickthall' : 'sahih';
+        const tText = (lang === 'pickthall') ? verse.pickthall : verse.sahih;
+
+        verseCardArabic.textContent    = verse.arabic;
+        verseCardTrans.textContent     = (w.quranTranslation === 'none') ? '' : (tText || '');
+        verseCardTrans.hidden          = (w.quranTranslation === 'none');
+        verseCardRef.textContent       = `${verse.surahName} · ${sn}:${vn}`;
+        verseCardLink.href             = `noorani://quran?s=${sn}&v=${vn}`;
+        verseCard.hidden = false;
+      }
+
+      renderVerseCard().catch(() => {});
 
       // ---------- Phase 9 Batch 2: blocked-today stats row ----------
       const statsRowEl   = document.getElementById('stats-row');

@@ -16,6 +16,8 @@ const starBtn        = document.getElementById('star-btn');
 const bookmarksBtn   = document.getElementById('bookmarks-btn');
 const historyBtn     = document.getElementById('history-btn');
 const downloadsBtn   = document.getElementById('downloads-btn');
+const quranBtn       = document.getElementById('quran-btn');
+const duasBtn        = document.getElementById('duas-btn');
 const settingsBtn    = document.getElementById('settings-btn');
 const dlBadge        = document.getElementById('dl-badge');
 
@@ -36,6 +38,8 @@ const historySearch  = document.getElementById('history-search');
 const INTERNAL_HOMEPAGE = 'noorani://home';
 const INTERNAL_SETTINGS = 'noorani://settings';
 const INTERNAL_WELCOME  = 'noorani://welcome';
+const INTERNAL_QURAN    = 'noorani://quran';
+const INTERNAL_DUAS     = 'noorani://duas';
 
 // webview preload — same preload.js, activated only on trusted schemes.
 const PRELOAD_URL = new URL('preload.js', window.location.href).href;
@@ -492,6 +496,8 @@ reloadBtn.addEventListener('click',  () => { const t = activeTab(); if (t) t.web
 newTabBtn.addEventListener('click',  () => { createTab(); focusURLBar(); });
 homeBtn.addEventListener('click',    () => goHome());
 settingsBtn.addEventListener('click',() => openSettings());
+if (quranBtn) quranBtn.addEventListener('click', () => openQuran());
+if (duasBtn)  duasBtn.addEventListener('click',  () => openDuas());
 
 // ============ Shortcut helpers ============
 
@@ -519,6 +525,8 @@ function forwardActive() { const t = activeTab(); if (t && t.webview.canGoForwar
 function reloadActive()  { const t = activeTab(); if (t) t.webview.reload(); }
 function goHome()        { const t = activeTab(); if (t) t.webview.loadURL(getHomepage()); }
 function openSettings()  { const t = activeTab(); if (t) t.webview.loadURL(INTERNAL_SETTINGS); }
+function openQuran()     { const t = activeTab(); if (t) t.webview.loadURL(INTERNAL_QURAN); }
+function openDuas()      { const t = activeTab(); if (t) t.webview.loadURL(INTERNAL_DUAS); }
 
 if (window.nooraniAPI && typeof window.nooraniAPI.onShortcut === 'function') {
   window.nooraniAPI.onShortcut((action, ...args) => {
@@ -1088,6 +1096,38 @@ function buildWebviewContextMenu(tab, params) {
     items.push({ divider: true });
   }
 
+  // --- Worship: save to Dua Bookmarks (Phase 9 Batch 3) ---
+  // Gated on the duaBookmarks feature so it doesn't appear for users who
+  // don't use the feature. The entry adopts whatever context is available —
+  // selected text becomes the translation/reference content, plus the page URL.
+  const duaFeatureOn = !!(currentSettings.features &&
+                          currentSettings.features.worship &&
+                          currentSettings.features.worship.duaBookmarks);
+  if (duaFeatureOn) {
+    const label = selection
+      ? `Save "${truncate(selection, 30)}" as Dua Reference`
+      : 'Save as Dua Reference';
+    items.push({
+      label,
+      action: async () => {
+        try {
+          const entry = {
+            type:             'verse-link',
+            reference:        selection || (params.pageURL || tab.url || ''),
+            text_translation: selection || '',
+            text_arabic:      '',
+            url:              params.pageURL || tab.url || '',
+            notes:            ''
+          };
+          await window.nooraniAPI.duas.add(entry);
+        } catch (err) {
+          console.error('[noorani] save-as-dua failed:', err);
+        }
+      }
+    });
+    items.push({ divider: true });
+  }
+
   // --- Editing actions ---
   // Visibility rules (per spec):
   //   Cut:    only if the element is editable AND there's a selection
@@ -1304,6 +1344,7 @@ if (api && api.settings && api.settings.onChange) {
     updateBookmarkBarVisibility();
     // Worship toggle may have flipped — re-fetch/clear the pill.
     refreshPrayerSnapshot();
+    renderWorshipToolbar();
     // Note: engine / homepage updates apply to next actions;
     // we don't retroactively change current tabs' URLs.
   });
@@ -1418,6 +1459,14 @@ async function refreshPrayerSnapshot() {
   if (!prayerPopEl.hidden) renderPrayerPop();
 }
 
+// Gate the worship toolbar buttons (Quran, Duas) on their respective settings
+// flags. Called at boot and whenever settings change.
+function renderWorshipToolbar() {
+  const w = (currentSettings && currentSettings.features && currentSettings.features.worship) || {};
+  if (quranBtn) quranBtn.hidden = !w.quranQuickAccess;
+  if (duasBtn)  duasBtn.hidden  = !w.duaBookmarks;
+}
+
 function startPrayerTicker() {
   if (prayerTickTimer) clearInterval(prayerTickTimer);
   prayerTickTimer = setInterval(() => {
@@ -1474,6 +1523,7 @@ async function boot() {
   // Prayer pill fires and forgets — failure just leaves the pill hidden.
   refreshPrayerSnapshot();
   startPrayerTicker();
+  renderWorshipToolbar();
 
   // First-run: open welcome instead of the homepage. Subsequent launches
   // take the normal path via getHomepage().

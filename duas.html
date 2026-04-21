@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <!-- NOORANI_DATA -->
+  <script>
+    (function () {
+      const d = window.__NOORANI_DATA__;
+      if (d && d.effectiveTheme) {
+        document.documentElement.setAttribute('data-theme', d.effectiveTheme);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/css/typography.css">
+  <title>Duas · Noorani</title>
+  <style>
+    @font-face {
+      font-family: 'Amiri Quran';
+      font-style: normal;
+      font-weight: 400;
+      src: url('/assets/fonts/AmiriQuran-Regular.ttf') format('truetype');
+      font-display: swap;
+    }
+    :root[data-theme="light"] {
+      --bg-primary:     #faf7f2;
+      --bg-card:        #ffffff;
+      --bg-hover:       #f5efe2;
+      --text-primary:   #2a2a2a;
+      --text-secondary: #6b6b6b;
+      --text-tertiary:  #9a9a9a;
+      --arabic-ink:     #1a1a1a;
+      --accent:         #c9a961;
+      --accent-ink:     #8a6f2b;
+      --accent-wash:    #f4ead2;
+      --border:         #e8e2d5;
+      --border-strong:  #d6ccb2;
+      --danger:         #b84545;
+      --shadow:         0 1px 3px rgba(0,0,0,0.05);
+    }
+    :root[data-theme="dark"] {
+      --bg-primary:     #1a1a1a;
+      --bg-card:        #252525;
+      --bg-hover:       #2e2a22;
+      --text-primary:   #e8e8e8;
+      --text-secondary: #9a9a9a;
+      --text-tertiary:  #6b6b6b;
+      --arabic-ink:     #f4f1ea;
+      --accent:         #d4af37;
+      --accent-ink:     #d4af37;
+      --accent-wash:    #33291a;
+      --border:         #3a3a3a;
+      --border-strong:  #4a4a4a;
+      --danger:         #e07070;
+      --shadow:         0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      min-height: 100vh;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+    }
+
+    .d-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 20px 32px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .d-title {
+      font-family: var(--font-serif, Georgia, serif);
+      font-style: italic;
+      font-size: 22px;
+      color: var(--accent-ink);
+      margin: 0;
+    }
+    .d-search {
+      flex: 1 1 300px;
+      max-width: 420px;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .d-search:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-wash);
+    }
+
+    .d-main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 30px 28px 120px;
+    }
+
+    .d-empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-secondary);
+    }
+    .d-empty h3 {
+      font-family: var(--font-serif, Georgia, serif);
+      font-weight: 400;
+      font-size: 24px;
+      color: var(--text-primary);
+      margin: 0 0 12px;
+    }
+    .d-empty p {
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 460px;
+      margin: 0 auto;
+    }
+    .d-empty a {
+      color: var(--accent-ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--accent);
+    }
+
+    .d-count {
+      color: var(--text-tertiary);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .d-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+      transition: border-color .15s;
+    }
+    .d-item:hover { border-color: var(--border-strong); }
+
+    .d-item__type {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 100px;
+      background: var(--accent-wash);
+      color: var(--accent-ink);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .d-item__arabic {
+      font-family: 'Amiri Quran', 'Traditional Arabic', 'Noto Naskh Arabic', serif;
+      font-size: 28px;
+      line-height: 2.0;
+      color: var(--arabic-ink);
+      direction: rtl;
+      text-align: right;
+      margin-bottom: 12px;
+    }
+
+    .d-item__translation {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .d-item__ref {
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: var(--accent-ink);
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .d-item__url a {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .d-item__url a:hover { color: var(--accent-ink); }
+
+    .d-notes {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border);
+    }
+    .d-notes__label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: 6px;
+    }
+    .d-notes__input {
+      width: 100%;
+      min-height: 52px;
+      padding: 8px 10px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .d-notes__input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .d-item__actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+    .d-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .d-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+    .d-btn--danger:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .d-confirm {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .d-confirm[data-open="true"] { display: flex; }
+    .d-confirm__box {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    .d-confirm__box h4 {
+      font-family: var(--font-serif, Georgia, serif);
+      font-weight: 500;
+      font-size: 18px;
+      margin: 0 0 10px;
+      color: var(--text-primary);
+    }
+    .d-confirm__box p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin: 0 0 18px;
+    }
+    .d-confirm__actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+    .d-confirm__actions .d-btn--primary {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+    .d-confirm__actions .d-btn--primary:hover {
+      filter: brightness(1.1);
+    }
+  </style>
+</head>
+<body>
+  <header class="d-header">
+    <h1 class="d-title">Duas</h1>
+    <input class="d-search" id="d-search" placeholder="Search your saved duas..." aria-label="Search duas">
+  </header>
+
+  <main class="d-main" id="d-main">
+    <div class="d-empty" id="d-empty" style="display:none;">
+      <h3>No duas saved yet</h3>
+      <p>Bookmark an ayah from the <a href="noorani://quran">Quran reader</a> or right-click on any page and choose <em>Save as Dua Reference</em> to build your personal du'a collection.</p>
+    </div>
+    <div class="d-count" id="d-count"></div>
+    <div id="d-list"></div>
+  </main>
+
+  <div class="d-confirm" id="d-confirm" role="dialog" aria-modal="true">
+    <div class="d-confirm__box">
+      <h4>Remove this dua?</h4>
+      <p>This will delete the saved dua from your collection. This action cannot be undone.</p>
+      <div class="d-confirm__actions">
+        <button class="d-btn" id="d-confirm-cancel">Cancel</button>
+        <button class="d-btn d-btn--primary" id="d-confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = window.nooraniAPI;
+    if (!api || !api.duas) {
+      document.getElementById('d-main').innerHTML =
+        '<div class="d-empty"><h3>Dua bookmarks unavailable</h3><p>Reload the tab.</p></div>';
+      throw new Error('nooraniAPI.duas missing');
+    }
+
+    const state = {
+      all:    [],
+      query:  '',
+      pendingRemoveId: null
+    };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function typeLabel(t) {
+      if (t === 'ayah') return 'Ayah';
+      if (t === 'verse-link') return 'Reference';
+      return 'Dua';
+    }
+
+    function matchesQuery(d, q) {
+      if (!q) return true;
+      const hay = (
+        (d.text_arabic     || '') + ' ' +
+        (d.text_translation|| '') + ' ' +
+        (d.reference       || '') + ' ' +
+        (d.notes           || '') + ' ' +
+        (d.url             || '')
+      ).toLowerCase();
+      return hay.includes(q);
+    }
+
+    function render() {
+      const list = [...state.all].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+      const filtered = list.filter((d) => matchesQuery(d, state.query));
+
+      const emptyEl = document.getElementById('d-empty');
+      const countEl = document.getElementById('d-count');
+      const listEl  = document.getElementById('d-list');
+
+      if (state.all.length === 0) {
+        emptyEl.style.display = '';
+        countEl.textContent = '';
+        listEl.innerHTML = '';
+        return;
+      }
+      emptyEl.style.display = 'none';
+
+      if (filtered.length === 0) {
+        countEl.textContent = `No matches — ${state.all.length} dua${state.all.length === 1 ? '' : 's'} saved total`;
+        listEl.innerHTML = '';
+        return;
+      }
+      countEl.textContent =
+        `${filtered.length} dua${filtered.length === 1 ? '' : 's'}` +
+        (state.query ? ` matching "${escapeHtml(state.query)}"` : '');
+
+      let html = '';
+      for (const d of filtered) {
+        html += `<div class="d-item" data-id="${escapeHtml(d.id)}">`;
+        html += `  <span class="d-item__type">${typeLabel(d.type)}</span>`;
+        if (d.reference) {
+          html += `  <div class="d-item__ref">${escapeHtml(d.reference)}</div>`;
+        }
+        if (d.text_arabic) {
+          html += `  <div class="d-item__arabic" dir="rtl">${escapeHtml(d.text_arabic)}</div>`;
+        }
+        if (d.text_translation) {
+          html += `  <div class="d-item__translation">${escapeHtml(d.text_translation)}</div>`;
+        }
+        if (d.url) {
+          html += `  <div class="d-item__url"><a href="${escapeHtml(d.url)}" target="_blank" rel="noopener">${escapeHtml(d.url)}</a></div>`;
+        }
+        html += `  <div class="d-notes">`;
+        html += `    <div class="d-notes__label">Notes</div>`;
+        html += `    <textarea class="d-notes__input" data-notes-for="${escapeHtml(d.id)}" placeholder="Personal notes — saved automatically">${escapeHtml(d.notes || '')}</textarea>`;
+        html += `  </div>`;
+        html += `  <div class="d-item__actions">`;
+        if (d.type === 'ayah' && d.reference) {
+          const m = String(d.reference).match(/(\d+):(\d+)/);
+          if (m) {
+            html += `    <button class="d-btn" data-open-ref="${escapeHtml(m[1])}:${escapeHtml(m[2])}">Open in Reader</button>`;
+          }
+        }
+        html += `    <button class="d-btn" data-copy="${escapeHtml(d.id)}">Copy</button>`;
+        html += `    <button class="d-btn d-btn--danger" data-remove="${escapeHtml(d.id)}">Remove</button>`;
+        html += `  </div>`;
+        html += `</div>`;
+      }
+      listEl.innerHTML = html;
+      wireItemActions();
+    }
+
+    function wireItemActions() {
+      // Remove buttons
+      document.querySelectorAll('[data-remove]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.pendingRemoveId = btn.getAttribute('data-remove');
+          document.getElementById('d-confirm').setAttribute('data-open', 'true');
+        });
+      });
+      // Copy buttons
+      document.querySelectorAll('[data-copy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-copy');
+          const d = state.all.find((x) => x.id === id);
+          if (!d) return;
+          const bits = [
+            d.text_arabic       || null,
+            d.text_translation  || null,
+            d.reference ? `— ${d.reference}` : null,
+            d.url              || null
+          ].filter(Boolean);
+          try {
+            await navigator.clipboard.writeText(bits.join('\n'));
+            btn.textContent = 'Copied';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+          } catch (_) {}
+        });
+      });
+      // Open-in-reader buttons
+      document.querySelectorAll('[data-open-ref]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const r = btn.getAttribute('data-open-ref') || '';
+          const m = r.match(/^(\d+):(\d+)$/);
+          if (!m) return;
+          location.href = `noorani://quran?s=${m[1]}&v=${m[2]}`;
+        });
+      });
+      // Notes autosave (debounced)
+      document.querySelectorAll('.d-notes__input').forEach((ta) => {
+        let t = null;
+        ta.addEventListener('input', () => {
+          clearTimeout(t);
+          t = setTimeout(async () => {
+            const id = ta.getAttribute('data-notes-for');
+            try { await api.duas.update(id, { notes: ta.value }); } catch (_) {}
+          }, 400);
+        });
+      });
+    }
+
+    document.getElementById('d-confirm-cancel').addEventListener('click', () => {
+      state.pendingRemoveId = null;
+      document.getElementById('d-confirm').setAttribute('data-open', 'false');
+    });
+    document.getElementById('d-confirm-ok').addEventListener('click', async () => {
+      const id = state.pendingRemoveId;
+      state.pendingRemoveId = null;
+      document.getElementById('d-confirm').setAttribute('data-open', 'false');
+      if (!id) return;
+      try {
+        state.all = await api.duas.remove(id) || [];
+        render();
+      } catch (_) {}
+    });
+
+    document.getElementById('d-search').addEventListener('input', (e) => {
+      state.query = (e.target.value || '').trim().toLowerCase();
+      render();
+    });
+
+    if (api.duas.onChange) {
+      api.duas.onChange((list) => {
+        state.all = Array.isArray(list) ? list : [];
+        render();
+      });
+    }
+
+    (async function boot() {
+      try {
+        state.all = (await api.duas.list()) || [];
+      } catch (_) { state.all = []; }
+      render();
+    })();
+  </script>
+</body>
+</html>

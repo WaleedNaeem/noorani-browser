@@ -6,6 +6,7 @@ const path = require('path');
 const fs   = require('fs');
 const prayer = require('./lib/prayer-engine');
 const blocklistEngine = require('./lib/blocklist-engine');
+const quranData = require('./lib/quran-data');
 
 let mainWindow = null;
 
@@ -13,7 +14,7 @@ let mainWindow = null;
 // Constants
 // ============================================================================
 
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 
 // Per-category feature defaults. When new keys are added later, they flow in
 // via the migration path in loadSettings() without wiping existing values.
@@ -31,6 +32,23 @@ const PRAYER_OFFSETS_DEFAULTS = Object.freeze({
   fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0
 });
 
+const QURAN_TRANSLATIONS = Object.freeze(['sahih', 'pickthall', 'none']);
+
+const RAMADAN_CATEGORIES_DEFAULTS = Object.freeze({
+  foodDelivery:  true,
+  recipes:       false,
+  entertainment: false,
+  social:        false
+});
+
+const RAMADAN_DEFAULTS = Object.freeze({
+  userEnabled:              true,   // set during onboarding; toggles in settings
+  currentlyActive:          false,  // computed daily from Hijri month
+  categories:               RAMADAN_CATEGORIES_DEFAULTS,
+  customDomains:            [],
+  notificationShownForYear: 0       // Hijri year stamp, prevents re-notifying
+});
+
 const FEATURES_DEFAULTS = Object.freeze({
   worship: Object.freeze({
     // Display toggles — control whether UI elements render at all.
@@ -46,7 +64,9 @@ const FEATURES_DEFAULTS = Object.freeze({
     adhanSound:         null,            // null = silent, else absolute path to audio
     adhanEnabled:       ADHAN_ENABLED_DEFAULTS,
     prayerOffsets:      PRAYER_OFFSETS_DEFAULTS,
-    hijriAdjustment:    0
+    hijriAdjustment:    0,
+    // Phase 9 Batch 3: Quran reader preference
+    quranTranslation:   'sahih'          // 'sahih' | 'pickthall' | 'none'
   }),
   contentSafety: Object.freeze({
     halalFilter:        false,
@@ -67,7 +87,11 @@ const FEATURES_DEFAULTS = Object.freeze({
   interface: Object.freeze({
     language:           'en',
     rtl:                false
-  })
+  }),
+  // Phase 9 Batch 3: Ramadan mode. Activation gated on
+  //   userEnabled && currentlyActive && (now is between Fajr and Maghrib).
+  // currentlyActive is recomputed daily from Hijri month — never set by hand.
+  ramadan:              RAMADAN_DEFAULTS
 });
 
 const ONBOARDING_DEFAULTS = Object.freeze({
@@ -93,6 +117,14 @@ const STATS_DEFAULTS = Object.freeze({
   blockedTodayResetAt: null
 });
 
+// Developer-only settings — exposed in the "Developer (for testing only)"
+// section of settings. hijriMonthOverride forces the Hijri month to a specific
+// value so Ramadan mode (month 9) can be exercised without waiting for Ramadan.
+// null = auto (real Hijri date); integer 1..12 = forced month.
+const DEVELOPER_DEFAULTS = Object.freeze({
+  hijriMonthOverride: null
+});
+
 const SETTINGS_DEFAULTS = Object.freeze({
   theme:              'light',                   // 'light' | 'dark' | 'auto'
   searchEngine:       'google',
@@ -103,7 +135,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   location:           LOCATION_DEFAULTS,
   features:           FEATURES_DEFAULTS,
   ui:                 UI_DEFAULTS,
-  stats:              STATS_DEFAULTS
+  stats:              STATS_DEFAULTS,
+  developer:          DEVELOPER_DEFAULTS
 });
 
 const SUPPORTED_LANGUAGES = Object.freeze(['en', 'ur', 'ar', 'id', 'tr', 'ms']);
@@ -181,11 +214,13 @@ function migrateSettings(raw) {
       worship:       mergeCategory(FEATURES_DEFAULTS.worship,       rawFeatures.worship),
       contentSafety: mergeCategory(FEATURES_DEFAULTS.contentSafety, rawFeatures.contentSafety),
       privacy:       mergeCategory(FEATURES_DEFAULTS.privacy,       rawFeatures.privacy),
-      interface:     mergeCategory(FEATURES_DEFAULTS.interface,     rawFeatures.interface)
+      interface:     mergeCategory(FEATURES_DEFAULTS.interface,     rawFeatures.interface),
+      ramadan:       mergeCategory(FEATURES_DEFAULTS.ramadan,       rawFeatures.ramadan)
     },
-    ui:       mergeCategory(UI_DEFAULTS, raw.ui),
-    stats:    mergeCategory(STATS_DEFAULTS, raw.stats),
-    version:  SETTINGS_VERSION
+    ui:        mergeCategory(UI_DEFAULTS,        raw.ui),
+    stats:     mergeCategory(STATS_DEFAULTS,     raw.stats),
+    developer: mergeCategory(DEVELOPER_DEFAULTS, raw.developer),
+    version:   SETTINGS_VERSION
   };
 
   // Validation for the flat fields
@@ -206,8 +241,47 @@ function migrateSettings(raw) {
 
   normalizeWorship(merged.features.worship);
   normalizeContentSafety(merged.features.contentSafety);
+  normalizeRamadan(merged.features.ramadan);
   normalizeStats(merged.stats);
+  normalizeDeveloper(merged.developer);
   return merged;
+}
+
+// Ramadan category — shallow merge leaves nested `categories` and
+// `customDomains` as frozen defaults. Deep-fill and coerce scalars.
+function normalizeRamadan(r) {
+  r.categories   = mergeCategory(RAMADAN_CATEGORIES_DEFAULTS, r.categories);
+  for (const k of Object.keys(RAMADAN_CATEGORIES_DEFAULTS)) {
+    r.categories[k] = !!r.categories[k];
+  }
+  r.userEnabled     = !!r.userEnabled;
+  r.currentlyActive = !!r.currentlyActive;
+
+  const raw = Array.isArray(r.customDomains) ? r.customDomains : [];
+  const clean = new Set();
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const h = cleanAllowlistEntry(entry);  // reuse hostname normalizer
+    if (h) clean.add(h);
+  }
+  r.customDomains = [...clean].sort();
+
+  const year = Number(r.notificationShownForYear);
+  r.notificationShownForYear = Number.isFinite(year) && year >= 0
+    ? Math.floor(year) : 0;
+  return r;
+}
+
+function normalizeDeveloper(d) {
+  if (!d || typeof d !== 'object') return;
+  const m = d.hijriMonthOverride;
+  if (m === null || m === undefined || m === 'auto' || m === '') {
+    d.hijriMonthOverride = null;
+  } else {
+    const n = Number(m);
+    d.hijriMonthOverride = Number.isFinite(n) && n >= 1 && n <= 12
+      ? Math.floor(n) : null;
+  }
 }
 
 // contentSafety.allowlist is a list of cleaned hostnames. Strip any
@@ -278,6 +352,9 @@ function normalizeWorship(w) {
   }
   if (!ASR_METHODS.includes(w.asrMethod)) {
     w.asrMethod = FEATURES_DEFAULTS.worship.asrMethod;
+  }
+  if (!QURAN_TRANSLATIONS.includes(w.quranTranslation)) {
+    w.quranTranslation = FEATURES_DEFAULTS.worship.quranTranslation;
   }
   if (typeof w.adhanSound !== 'string' || !w.adhanSound.length) {
     w.adhanSound = null;
@@ -401,8 +478,10 @@ function buildInternalHtml(pageName, search) {
 // a fixed content-type from the app directory. Whitelisted explicitly so a
 // malformed URL can never pull arbitrary files off disk.
 const NOORANI_ASSETS = Object.freeze({
-  '/modal.js':              'text/javascript; charset=utf-8',
-  '/css/typography.css':    'text/css; charset=utf-8'
+  '/modal.js':                              'text/javascript; charset=utf-8',
+  '/css/typography.css':                    'text/css; charset=utf-8',
+  '/contextmenu.js':                        'text/javascript; charset=utf-8',
+  '/assets/fonts/AmiriQuran-Regular.ttf':   'font/ttf'
 });
 
 function registerNooraniProtocol() {
@@ -450,7 +529,7 @@ function registerNooraniProtocol() {
         return new Response('Not Found', { status: 404 });
       }
       if (page === 'home' || page === 'settings' || page === 'welcome' ||
-          page === 'blocked') {
+          page === 'blocked' || page === 'quran' || page === 'duas') {
         const html = buildInternalHtml(page, u.search);
         if (!html) return new Response('Template missing', { status: 500 });
         return new Response(html, {
@@ -520,6 +599,15 @@ function rebuildCombinedSet() {
   if (!loadedBlocklists) return;
   const s = loadSettings();
   const active = blocklistEngine.activeCategoriesFromSettings(s);
+
+  // Ramadan gate (Phase 9 Batch 3). When on, populate the synthetic
+  // `ramadan` category Set so categoryForHost can identify it on the
+  // blocked page; otherwise clear it so it contributes nothing.
+  const snap = computePrayerSnapshot();
+  const ramadanDomains = computeRamadanBlockedDomains(s, snap);
+  loadedBlocklists.categories.ramadan = ramadanDomains;
+  if (ramadanDomains.size > 0) active.push('ramadan');
+
   combinedSet = blocklistEngine.buildCombinedSet(loadedBlocklists, active);
 }
 
@@ -745,7 +833,202 @@ function computeHijri(isoDate) {
   const s = loadSettings();
   const adj = s.features.worship.hijriAdjustment || 0;
   const d = isoDate ? new Date(isoDate) : new Date();
-  return prayer.getHijriDate(d, adj);
+  const real = prayer.getHijriDate(d, adj);
+
+  // developer.hijriMonthOverride is a testing aid for the Ramadan mode
+  // engine — when set to an integer 1..12, we rewrite the month on the
+  // returned Hijri date. The underlying Gregorian→Hijri conversion still
+  // runs so day-of-month stays sensible; only the month (and the derived
+  // monthName) are substituted.
+  const override = s.developer && s.developer.hijriMonthOverride;
+  if (Number.isFinite(override) && override >= 1 && override <= 12) {
+    return {
+      ...real,
+      month:     override,
+      monthName: HIJRI_MONTH_NAMES[override - 1] || real.monthName,
+      formatted: `${real.day} ${HIJRI_MONTH_NAMES[override - 1] || real.monthName} ${real.year} (simulated)`
+    };
+  }
+  return real;
+}
+
+const HIJRI_MONTH_NAMES = Object.freeze([
+  'Muharram', 'Safar', "Rabi' al-awwal", "Rabi' al-thani",
+  'Jumada al-awwal', 'Jumada al-thani', 'Rajab', "Sha'ban",
+  'Ramadan', 'Shawwal', "Dhu al-Qi'dah", "Dhu al-Hijjah"
+]);
+
+// ============================================================================
+// Ramadan mode (Phase 9 Batch 3)
+// ============================================================================
+//
+// The Ramadan gate has three independent conditions, all of which must be
+// true before any Ramadan-category blocking applies:
+//
+//   1. User opted in           — settings.features.ramadan.userEnabled
+//   2. It's actually Ramadan   — settings.features.ramadan.currentlyActive
+//                                (computed daily from Hijri month; honors
+//                                 developer.hijriMonthOverride)
+//   3. We're in fasting hours  — local time is between Fajr and Maghrib
+//                                from today's computed prayer snapshot
+//
+// When all three are true, we union the enabled subcategories' domains
+// (foodDelivery, recipes, entertainment, social) plus the user's
+// customDomains into combinedSet. When any condition is false, Ramadan
+// contributes zero domains — the regular web is unblocked.
+
+function isInFastingHours(snap) {
+  const times = snap && snap.times;
+  if (!times || !times.fajr || !times.maghrib) return false;
+  const now = Date.now();
+  return now >= times.fajr.getTime() && now < times.maghrib.getTime();
+}
+
+function isRamadanGateOn(settings, snap) {
+  const r = settings && settings.features && settings.features.ramadan;
+  if (!r || !r.userEnabled || !r.currentlyActive) return false;
+  return isInFastingHours(snap);
+}
+
+// Given the current settings + prayer snapshot, returns a Set of domains
+// that should be blocked under Ramadan mode right now. Empty if the gate
+// is off. Exposed here (not in blocklist-engine) because it depends on
+// prayer-time state that lives in main.
+function computeRamadanBlockedDomains(settings, snap) {
+  if (!isRamadanGateOn(settings, snap)) return new Set();
+  return blocklistEngine.loadRamadanDomains(settings.features.ramadan);
+}
+
+// Read Hijri month *via computeHijri* so developer.hijriMonthOverride is
+// respected everywhere it matters. Returns an integer 1..12 or null.
+function currentHijriMonth() {
+  try {
+    const h = computeHijri();
+    return Number.isFinite(h.month) ? h.month : null;
+  } catch (_) { return null; }
+}
+function hijriForOffsetDays(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  try { return computeHijri(d.toISOString()); } catch (_) { return null; }
+}
+
+// Recomputes settings.features.ramadan.currentlyActive based on today's
+// effective Hijri month. Called at boot, on midnight rollover, and after
+// any developer override change. Persists the flag; rebuilds the
+// combined set; returns true if the flag flipped.
+function updateRamadanActiveFlag() {
+  const s = loadSettings();
+  const month = currentHijriMonth();
+  const shouldBeActive = (month === 9);
+  const wasActive = !!(s.features.ramadan && s.features.ramadan.currentlyActive);
+  if (wasActive !== shouldBeActive) {
+    s.features.ramadan.currentlyActive = shouldBeActive;
+    saveSettings(s);
+    rebuildCombinedSet();
+    broadcastToAll('settings:changed', s);
+    return true;
+  }
+  return false;
+}
+
+let ramadanMidnightTimer = null;
+function clearRamadanMidnightTimer() {
+  if (ramadanMidnightTimer) { clearTimeout(ramadanMidnightTimer); ramadanMidnightTimer = null; }
+}
+
+// Every local midnight, re-check Ramadan status and fire any due
+// notification. Chained via setTimeout so we don't drift across DST.
+function scheduleRamadanMidnightCheck() {
+  clearRamadanMidnightTimer();
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 10, 0);
+  const delay = Math.max(1000, next.getTime() - now.getTime());
+  ramadanMidnightTimer = setTimeout(() => {
+    try {
+      updateRamadanActiveFlag();
+      checkAndFireRamadanNotifications();
+    } finally {
+      scheduleRamadanMidnightCheck();
+    }
+  }, delay);
+}
+
+// Checks today/tomorrow/yesterday Hijri dates and fires at most one
+// "entering Ramadan" notification per Hijri year (locked by
+// notificationShownForYear). The end-of-Ramadan notification is implicit:
+// when we detect today=Ramadan AND tomorrow!=Ramadan, we fire an Eid
+// notification (guarded in-memory to avoid duplicates on rapid restarts).
+let lastEidFiredForYear = 0;
+
+function checkAndFireRamadanNotifications() {
+  const s = loadSettings();
+  const today     = hijriForOffsetDays(0);
+  const tomorrow  = hijriForOffsetDays(1);
+  const in3days   = hijriForOffsetDays(3);
+  const yesterday = hijriForOffsetDays(-1);
+  if (!today) return;
+
+  const thisYear = today.year;
+  const lastShown = (s.features.ramadan && s.features.ramadan.notificationShownForYear) || 0;
+
+  // --- Last day of Ramadan (fires even if a start notif was fired)
+  if (today.month === 9 && tomorrow && tomorrow.month !== 9) {
+    if (lastEidFiredForYear !== thisYear) {
+      fireRamadanNotification(
+        'Eid Mubarak',
+        'Ramadan mode has ended. Taqabbal Allahu minna wa minkum.'
+      );
+      lastEidFiredForYear = thisYear;
+    }
+    return;
+  }
+
+  // Only one start-of-Ramadan notification per Hijri year.
+  if (lastShown >= thisYear) return;
+
+  let fired = false;
+  const userEnabledLabel = s.features.ramadan.userEnabled ? 'enabled' : 'disabled';
+
+  // Day 1 of Ramadan
+  if (today.month === 9 && (!yesterday || yesterday.month !== 9)) {
+    fireRamadanNotification(
+      'Ramadan Mubarak',
+      `Ramadan mode is now ${userEnabledLabel} during fasting hours.`
+    );
+    fired = true;
+  }
+  // 1 day before Ramadan
+  else if (tomorrow && tomorrow.month === 9 && today.month !== 9) {
+    fireRamadanNotification(
+      'Ramadan starts tomorrow',
+      `Your Ramadan mode is ${userEnabledLabel}.`
+    );
+    fired = true;
+  }
+  // 3 days before Ramadan
+  else if (in3days && in3days.month === 9 && today.month !== 9) {
+    fireRamadanNotification(
+      'Ramadan begins in 3 days',
+      'Review your Ramadan mode settings.'
+    );
+    fired = true;
+  }
+
+  if (fired) {
+    s.features.ramadan.notificationShownForYear = thisYear;
+    saveSettings(s);
+  }
+}
+
+function fireRamadanNotification(title, body) {
+  try {
+    const n = new Notification({ title, body, silent: true });
+    n.show();
+    setTimeout(() => { try { n.close(); } catch (_) {} }, 60000);
+  } catch (err) {
+    console.error('[noorani] ramadan notification failed:', err);
+  }
 }
 
 // Nominatim geocoder. Uses Electron's net module so we share Chromium's
@@ -820,6 +1103,10 @@ function schedulePrayerRefresh() {
   const delay = Math.max(1000, earliest - now + 1000);   // 1-sec cushion
   prayerRefreshTimer = setTimeout(() => {
     broadcastToAll('prayer:nextChanged', computeNextPrayer());
+    // A prayer-time boundary just crossed. If that boundary was Fajr or
+    // Maghrib, the Ramadan fasting-hours gate just changed — rebuild the
+    // combined blocklist so the engine picks it up.
+    rebuildCombinedSet();
     schedulePrayerRefresh();
   }, delay);
 }
@@ -867,10 +1154,17 @@ function fireAzanNotification(prayerName, when) {
 }
 
 // Single entry point called whenever worship-relevant state changes
-// (location, settings, day rollover). Re-arms both schedules.
+// (location, settings, day rollover). Re-arms all schedules and
+// refreshes the Ramadan active flag + combined blocklist so the gate
+// picks up changes immediately.
 function onWorshipStateChanged() {
   schedulePrayerRefresh();
   scheduleAzanNotifications();
+  updateRamadanActiveFlag();
+  // rebuildCombinedSet may already have run inside updateRamadanActiveFlag
+  // if the flag flipped; but we always run it here to pick up fasting-hour
+  // transitions (Fajr→Maghrib window change) that don't flip currentlyActive.
+  rebuildCombinedSet();
 }
 
 // ============================================================================
@@ -1144,6 +1438,77 @@ function registerIpc() {
     return { ...s, _effectiveTheme: getEffectiveTheme(s) };
   });
 
+  // Ramadan: partial update of features.ramadan (Phase 9 Batch 3).
+  // Deep-merges `categories` so a single subcategory toggle doesn't wipe
+  // the others. `customDomains` is replaced wholesale; the caller is
+  // responsible for add/remove semantics.
+  ipcMain.handle('ramadan:update', (_e, partial) => {
+    if (!partial || typeof partial !== 'object') return loadSettings();
+    const s = loadSettings();
+    const r = s.features.ramadan;
+    for (const [k, v] of Object.entries(partial)) {
+      if (v === undefined) continue;
+      if (k === 'categories' && v && typeof v === 'object') {
+        r.categories = { ...r.categories, ...v };
+      } else {
+        r[k] = v;
+      }
+    }
+    normalizeRamadan(r);
+    saveSettings(s);
+    broadcastSettings();
+    // Any ramadan settings change may flip whether the gate is on; rebuild.
+    rebuildCombinedSet();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
+  ipcMain.handle('ramadan:customAdd', (_e, raw) => {
+    const s = loadSettings();
+    const host = cleanAllowlistEntry(raw);  // reuse hostname cleaner
+    if (!host) return { error: 'invalid', list: s.features.ramadan.customDomains };
+    const list = Array.isArray(s.features.ramadan.customDomains)
+      ? s.features.ramadan.customDomains.slice() : [];
+    if (!list.includes(host)) list.push(host);
+    list.sort();
+    s.features.ramadan.customDomains = list;
+    normalizeRamadan(s.features.ramadan);
+    saveSettings(s);
+    broadcastSettings();
+    rebuildCombinedSet();
+    return { host, list: s.features.ramadan.customDomains };
+  });
+  ipcMain.handle('ramadan:customRemove', (_e, raw) => {
+    const s = loadSettings();
+    const host = cleanAllowlistEntry(raw);
+    const list = (Array.isArray(s.features.ramadan.customDomains)
+      ? s.features.ramadan.customDomains : []).filter((h) => h !== host);
+    s.features.ramadan.customDomains = list;
+    saveSettings(s);
+    broadcastSettings();
+    rebuildCombinedSet();
+    return { list };
+  });
+  ipcMain.handle('ramadan:preview', () => {
+    const s = loadSettings();
+    const domains = blocklistEngine.loadRamadanDomains(s.features.ramadan);
+    return {
+      count: domains.size,
+      domains: [...domains].sort()
+    };
+  });
+
+  // Developer settings (Phase 9 Batch 3) — testing-only affordances.
+  ipcMain.handle('developer:update', (_e, partial) => {
+    if (!partial || typeof partial !== 'object') return loadSettings();
+    const s = loadSettings();
+    s.developer = { ...s.developer, ...partial };
+    normalizeDeveloper(s.developer);
+    saveSettings(s);
+    broadcastSettings();
+    // Hijri override may flip Ramadan.currentlyActive — re-check now.
+    updateRamadanActiveFlag();
+    return { ...s, _effectiveTheme: getEffectiveTheme(s) };
+  });
+
   // Adhan audio: pick a file → copy to userData/data/adhan/ → return path.
   // Intentionally limited to MP3/OGG/WAV to keep the Notification sound
   // subsystem happy across platforms.
@@ -1236,6 +1601,77 @@ function registerIpc() {
     broadcastToAll('stats:changed', s.stats);
     return s.stats;
   });
+
+  // Quran (Phase 9 Batch 3) -------------------------------------------------
+  ipcMain.handle('quran:getSurahList', () => quranData.getSurahList());
+  ipcMain.handle('quran:getSurah', (_e, num) => quranData.getSurah(num));
+  ipcMain.handle('quran:getVerse', (_e, payload) => {
+    const p = payload || {};
+    return quranData.getVerse(p.surah, p.verse);
+  });
+  ipcMain.handle('quran:getTranslation', (_e, payload) => {
+    const p = payload || {};
+    return quranData.getTranslation(p.lang, p.surah);
+  });
+  ipcMain.handle('quran:getDailyVerses', () => quranData.getDailyVerseRefs());
+
+  // Dua bookmarks (Phase 9 Batch 3) -----------------------------------------
+  // Separate storage from regular bookmarks — dua-bookmarks.json. Entries are
+  // ayahs, user-authored supplications, or verse-link references from the web.
+  ipcMain.handle('duas:list', () => loadJSON('dua-bookmarks.json', []));
+  ipcMain.handle('duas:add', (_e, entry) => {
+    const list = loadJSON('dua-bookmarks.json', []);
+    const clean = normalizeDua(entry);
+    if (!clean) return list;
+    // Deduplicate ayah-type entries on reference to avoid double-bookmarking.
+    if (clean.type === 'ayah' && clean.reference) {
+      const dup = list.find((d) => d.type === 'ayah' && d.reference === clean.reference);
+      if (dup) return list;
+    }
+    list.push(clean);
+    saveJSON('dua-bookmarks.json', list);
+    broadcastToAll('duas:changed', list);
+    return list;
+  });
+  ipcMain.handle('duas:remove', (_e, id) => {
+    const list = loadJSON('dua-bookmarks.json', []).filter((d) => d.id !== id);
+    saveJSON('dua-bookmarks.json', list);
+    broadcastToAll('duas:changed', list);
+    return list;
+  });
+  ipcMain.handle('duas:update', (_e, payload) => {
+    if (!payload || !payload.id) return loadJSON('dua-bookmarks.json', []);
+    const list = loadJSON('dua-bookmarks.json', []);
+    const idx = list.findIndex((d) => d.id === payload.id);
+    if (idx < 0) return list;
+    const changes = payload.changes || {};
+    // Only allow mutating a safe subset — never re-key id/savedAt/type.
+    if (typeof changes.notes === 'string') list[idx].notes = changes.notes;
+    if (typeof changes.reference === 'string') list[idx].reference = changes.reference.trim();
+    saveJSON('dua-bookmarks.json', list);
+    broadcastToAll('duas:changed', list);
+    return list;
+  });
+}
+
+// Coerce a raw dua payload into the canonical schema. Rejects if it has no
+// meaningful content (no arabic, translation, reference, or notes).
+function normalizeDua(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const type = ['ayah', 'dua', 'verse-link'].includes(entry.type) ? entry.type : 'dua';
+  const out = {
+    id:                entry.id || `dua_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    reference:         typeof entry.reference        === 'string' ? entry.reference.trim()        : '',
+    text_arabic:       typeof entry.text_arabic      === 'string' ? entry.text_arabic             : '',
+    text_translation:  typeof entry.text_translation === 'string' ? entry.text_translation        : '',
+    translation_lang:  typeof entry.translation_lang === 'string' ? entry.translation_lang        : 'en',
+    notes:             typeof entry.notes            === 'string' ? entry.notes                   : '',
+    url:               typeof entry.url              === 'string' ? entry.url                     : '',
+    savedAt:           Date.now()
+  };
+  const hasContent = out.text_arabic || out.text_translation || out.reference || out.notes || out.url;
+  return hasContent ? out : null;
 }
 
 // ============================================================================
@@ -1424,6 +1860,9 @@ if (process.platform === 'win32') {
 
 app.whenReady().then(() => {
   ensureDataDir();
+  // Verify bundled Quran data is intact (6236 verses across all three files)
+  // before any renderer asks for it.
+  quranData.assertIntegrity();
   registerNooraniProtocol();
   setupDownloads();
   registerIpc();
@@ -1445,6 +1884,12 @@ app.whenReady().then(() => {
   // Worship: arm schedulers as soon as the app is up. Safe even when the
   // user's location isn't geocoded yet — the scheduler retries in 5 min.
   onWorshipStateChanged();
+
+  // Ramadan (Phase 9 Batch 3): daily Hijri re-check + boot-time notification
+  // sweep. updateRamadanActiveFlag already ran inside onWorshipStateChanged;
+  // the midnight timer keeps currentlyActive honest across day rollover.
+  scheduleRamadanMidnightCheck();
+  checkAndFireRamadanNotifications();
 
   // If onboarding left us with city+country but no coords, try to geocode
   // once in the background — the prayer engine then activates automatically

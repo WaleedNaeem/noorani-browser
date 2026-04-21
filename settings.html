@@ -413,15 +413,6 @@
         </div>
       </div>
       <div class="row">
-        <div class="row__label">Ramadan mode</div>
-        <div class="row__control">
-          <label class="switch"><input type="checkbox" data-cs="ramadanMode"><span class="switch__slider"></span></label>
-          <div class="row__hint" style="font-family: var(--font-sans);">
-            Saves your preference. Time-based behaviour lands in a later batch.
-          </div>
-        </div>
-      </div>
-      <div class="row">
         <div class="row__label">
           Image modesty filter
           <span style="display:inline-block; margin-left:6px; padding:1px 6px;
@@ -512,6 +503,75 @@
         <div class="row__control">
           <button id="blocklist-refresh-btn">Refresh now</button>
           <div class="row__hint" id="blocklist-refresh-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RAMADAN MODE (Phase 9 Batch 3) -->
+    <section class="section" id="ramadan-section">
+      <h2>Ramadan Mode</h2>
+      <div class="row">
+        <div class="row__label">Status</div>
+        <div class="row__control">
+          <div id="ramadan-status" class="row__hint" style="font-family: var(--font-sans); color: var(--text); font-weight: 500;">—</div>
+          <div id="ramadan-status-hint" class="row__hint" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Enable Ramadan Mode during Ramadan</div>
+        <div class="row__control">
+          <label class="switch"><input type="checkbox" id="ramadan-user-enabled"><span class="switch__slider"></span></label>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            When Ramadan arrives, block the categories below from Fajr to Maghrib. Between Maghrib and Fajr everything stays unblocked.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Categories</div>
+        <div class="row__control">
+          <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <input type="checkbox" data-ramadan-cat="foodDelivery">
+            <span>Food delivery <em style="color: var(--muted); font-size:12px;">(foodpanda, ubereats, deliveroo, …)</em></span>
+          </label>
+          <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <input type="checkbox" data-ramadan-cat="recipes">
+            <span>Recipes &amp; food content <em style="color: var(--muted); font-size:12px;">(allrecipes, seriouseats, …)</em></span>
+          </label>
+          <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <input type="checkbox" data-ramadan-cat="entertainment">
+            <span>Entertainment <em style="color: var(--muted); font-size:12px;">(netflix, disney+, spotify, …)</em></span>
+          </label>
+          <label style="display:flex; align-items:center; gap:12px;">
+            <input type="checkbox" data-ramadan-cat="social">
+            <span>Social media <em style="color: var(--muted); font-size:12px;">(facebook, instagram, tiktok, x, …)</em></span>
+          </label>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Custom blocked during Ramadan</div>
+        <div class="row__control">
+          <div id="ramadan-custom-table"></div>
+          <div class="input-group" style="margin-top: 10px;">
+            <input type="text" id="ramadan-custom-input" placeholder="example.com">
+            <button id="ramadan-custom-add-btn">Add</button>
+          </div>
+          <div class="row__hint" id="ramadan-custom-status" style="font-family: var(--font-sans);"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Active hours</div>
+        <div class="row__control">
+          <div id="ramadan-hours" class="row__hint" style="font-family: var(--font-sans); color: var(--text);">—</div>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Based on today's calculated prayer times. Blocks only apply during this window.
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row__label">Preview</div>
+        <div class="row__control">
+          <button id="ramadan-preview-btn">Show blocked domains</button>
+          <div class="row__hint" id="ramadan-preview-output" style="font-family: var(--font-sans); margin-top: 8px;"></div>
         </div>
       </div>
     </section>
@@ -648,6 +708,36 @@
           <div class="row__hint">
             Reopens the first-run flow. Your current preferences will remain
             unchanged unless you change them there.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DEVELOPER (Phase 9 Batch 3) -->
+    <section class="section" id="developer-section">
+      <h2>Developer <span style="font-size:12px; color: var(--muted); font-weight: normal;">(for testing only)</span></h2>
+      <div class="row">
+        <div class="row__label">Hijri month override</div>
+        <div class="row__control">
+          <select id="dev-hijri-override" style="padding: 6px 10px; font-family: inherit; font-size: 13px;">
+            <option value="auto">Auto (use real Hijri date)</option>
+            <option value="1">1 — Muharram</option>
+            <option value="2">2 — Safar</option>
+            <option value="3">3 — Rabi' al-awwal</option>
+            <option value="4">4 — Rabi' al-thani</option>
+            <option value="5">5 — Jumada al-awwal</option>
+            <option value="6">6 — Jumada al-thani</option>
+            <option value="7">7 — Rajab</option>
+            <option value="8">8 — Sha'ban</option>
+            <option value="9">9 — Ramadan</option>
+            <option value="10">10 — Shawwal</option>
+            <option value="11">11 — Dhu al-Qi'dah</option>
+            <option value="12">12 — Dhu al-Hijjah</option>
+          </select>
+          <div class="row__hint" style="font-family: var(--font-sans);">
+            Forces the app to treat the current Hijri month as the chosen value.
+            Use this to exercise Ramadan Mode (month 9) without waiting for Ramadan.
+            Set back to <em>Auto</em> when done.
           </div>
         </div>
       </div>
@@ -1239,6 +1329,164 @@
         }
         setTimeout(() => { refreshStatus.textContent = ''; }, 4000);
       });
+
+      // =============================================================
+      // RAMADAN MODE (Phase 9 Batch 3)
+      // =============================================================
+      const ramadanUserEnabled = document.getElementById('ramadan-user-enabled');
+      const ramadanStatus      = document.getElementById('ramadan-status');
+      const ramadanStatusHint  = document.getElementById('ramadan-status-hint');
+      const ramadanHours       = document.getElementById('ramadan-hours');
+      const ramadanCustomTable = document.getElementById('ramadan-custom-table');
+      const ramadanCustomInput = document.getElementById('ramadan-custom-input');
+      const ramadanCustomStatus= document.getElementById('ramadan-custom-status');
+      const ramadanPreviewBtn  = document.getElementById('ramadan-preview-btn');
+      const ramadanPreviewOut  = document.getElementById('ramadan-preview-output');
+
+      const ramadanCfg = () => (settings && settings.features && settings.features.ramadan) || {};
+
+      function clockStr(d) {
+        if (!d) return '—';
+        const x = (d instanceof Date) ? d : new Date(d);
+        return x.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+
+      async function renderRamadanSection() {
+        const cfg = ramadanCfg();
+        // Status banner
+        const snap = await (api && api.prayer && api.prayer.getTimes());
+        const inFasting = !!(snap && snap.times && snap.times.fajr && snap.times.maghrib &&
+                            Date.now() >= new Date(snap.times.fajr).getTime() &&
+                            Date.now() <  new Date(snap.times.maghrib).getTime());
+        let statusText, statusHint;
+        if (!cfg.currentlyActive) {
+          statusText = 'Not Ramadan';
+          statusHint = "Ramadan Mode activates automatically when the Hijri month becomes Ramadan. Set a Hijri month override in the Developer section below to test early.";
+        } else if (!cfg.userEnabled) {
+          statusText = 'Active — disabled by you';
+          statusHint = 'It is Ramadan but you have turned Ramadan Mode off.';
+        } else if (inFasting) {
+          statusText = 'Active — fasting hours';
+          statusHint = 'Blocked categories are currently enforced until Maghrib.';
+        } else {
+          statusText = 'Active — iftar hours';
+          statusHint = 'Maghrib has passed. Everything is unblocked until Fajr.';
+        }
+        ramadanStatus.textContent = statusText;
+        ramadanStatusHint.textContent = statusHint;
+
+        // Enable toggle
+        ramadanUserEnabled.checked = !!cfg.userEnabled;
+
+        // Categories
+        const cats = cfg.categories || {};
+        document.querySelectorAll('[data-ramadan-cat]').forEach((cb) => {
+          cb.checked = !!cats[cb.dataset.ramadanCat];
+        });
+
+        // Active hours display
+        if (snap && snap.times && snap.times.fajr && snap.times.maghrib) {
+          ramadanHours.textContent = `Blocks from Fajr (${clockStr(snap.times.fajr)}) to Maghrib (${clockStr(snap.times.maghrib)}).`;
+        } else {
+          ramadanHours.textContent = 'Prayer times unavailable — set your location in Worship & Prayer.';
+        }
+
+        // Custom domains table
+        renderRamadanCustomTable();
+      }
+
+      function renderRamadanCustomTable() {
+        const list = ramadanCfg().customDomains || [];
+        if (!list.length) {
+          ramadanCustomTable.innerHTML = '<div style="color: var(--muted); font-size: 12px; padding: 4px 0;">' +
+            'No custom domains. Add your own distraction domains below.' +
+            '</div>';
+          return;
+        }
+        let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
+        for (const host of list) {
+          html += `<div style="display: flex; justify-content: space-between; align-items: center; ` +
+                  `padding: 6px 10px; background: var(--page-bg); border-radius: 6px;">` +
+                  `<span style="font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;">${host}</span>` +
+                  `<button data-remove-rcustom="${host}" style="padding: 4px 10px; font-size: 11px;">Remove</button>` +
+                  `</div>`;
+        }
+        html += '</div>';
+        ramadanCustomTable.innerHTML = html;
+        ramadanCustomTable.querySelectorAll('[data-remove-rcustom]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!api) return;
+            await api.ramadan.customRemove(btn.dataset.removeRcustom);
+          });
+        });
+      }
+
+      ramadanUserEnabled.addEventListener('change', () => {
+        if (api) api.ramadan.update({ userEnabled: ramadanUserEnabled.checked });
+      });
+      document.querySelectorAll('[data-ramadan-cat]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          if (!api) return;
+          api.ramadan.update({ categories: { [cb.dataset.ramadanCat]: cb.checked } });
+        });
+      });
+      document.getElementById('ramadan-custom-add-btn').addEventListener('click', async () => {
+        if (!api) return;
+        const v = (ramadanCustomInput.value || '').trim();
+        if (!v) return;
+        const r = await api.ramadan.customAdd(v);
+        if (r && r.error) {
+          ramadanCustomStatus.textContent = 'Invalid domain.';
+        } else {
+          ramadanCustomInput.value = '';
+          ramadanCustomStatus.textContent = 'Added ' + (r.host || v) + '.';
+        }
+        setTimeout(() => { ramadanCustomStatus.textContent = ''; }, 2500);
+      });
+      ramadanPreviewBtn.addEventListener('click', async () => {
+        if (!api) return;
+        const r = await api.ramadan.preview();
+        if (!r || !r.domains || !r.domains.length) {
+          ramadanPreviewOut.textContent = 'No domains would be blocked with the current toggles.';
+          return;
+        }
+        const shown = r.domains.slice(0, 30);
+        ramadanPreviewOut.innerHTML =
+          `<strong>${r.count} domain${r.count === 1 ? '' : 's'} would be blocked</strong><br>` +
+          shown.map((d) => `<code style="background: var(--page-bg); padding: 1px 6px; border-radius: 3px; font-size: 11px;">${d}</code>`).join(' ') +
+          (r.count > shown.length ? `<div style="color: var(--muted); margin-top: 6px;">… and ${r.count - shown.length} more.</div>` : '');
+      });
+
+      renderRamadanSection();
+
+      // =============================================================
+      // DEVELOPER (Phase 9 Batch 3)
+      // =============================================================
+      const devHijriSel = document.getElementById('dev-hijri-override');
+      const developerCfg = () => (settings && settings.developer) || {};
+
+      function renderDeveloper() {
+        const cfg = developerCfg();
+        devHijriSel.value = (cfg.hijriMonthOverride == null) ? 'auto' : String(cfg.hijriMonthOverride);
+      }
+      devHijriSel.addEventListener('change', async () => {
+        if (!api) return;
+        const raw = devHijriSel.value;
+        const value = (raw === 'auto' || raw === '') ? null : Number(raw);
+        await api.developer.update({ hijriMonthOverride: value });
+        // Re-render Ramadan status since the override may have flipped it.
+        renderRamadanSection();
+      });
+      renderDeveloper();
+
+      // Any settings broadcast should re-render these two sections too.
+      if (api && api.settings && api.settings.onChange) {
+        api.settings.onChange((next) => {
+          Object.assign(settings, next);
+          renderRamadanSection();
+          renderDeveloper();
+        });
+      }
     })();
   </script>
 </body>

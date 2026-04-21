@@ -95,6 +95,30 @@ if (isTrusted) {
       clearAdhan:   ()        => invoke('adhan:clear-file'),
       getAdhanUrl:  ()        => invoke('adhan:get-sound-url')
     },
+    ramadan: {
+      update:       (partial) => invoke('ramadan:update', partial),
+      customAdd:    (raw)     => invoke('ramadan:customAdd', raw),
+      customRemove: (raw)     => invoke('ramadan:customRemove', raw),
+      preview:      ()        => invoke('ramadan:preview')
+    },
+    developer: {
+      update:       (partial) => invoke('developer:update', partial)
+    },
+
+    quran: {
+      getSurahList:    ()        => invoke('quran:getSurahList'),
+      getSurah:        (num)     => invoke('quran:getSurah', num),
+      getVerse:        (s, v)    => invoke('quran:getVerse', { surah: s, verse: v }),
+      getTranslation:  (lang, s) => invoke('quran:getTranslation', { lang, surah: s }),
+      getDailyVerses:  ()        => invoke('quran:getDailyVerses')
+    },
+    duas: {
+      list:     ()              => invoke('duas:list'),
+      add:      (entry)         => invoke('duas:add', entry),
+      remove:   (id)            => invoke('duas:remove', id),
+      update:   (id, changes)   => invoke('duas:update', { id, changes }),
+      onChange: subscribe('duas:changed')
+    },
 
     blocklist: {
       info:     ()      => invoke('blocklist:info'),
